@@ -1,0 +1,55 @@
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== IDEs =====
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+.project
+.classpath
+.settings/
+.factorypath
+
+# ===== Environment =====
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ===== Java / Maven =====
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+hs_err_pid*
+
+# ===== Node.js =====
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ===== SvelteKit =====
+.svelte-kit/
+build/
+dist/
+
+# ===== Build outputs =====
+out/
+*.out
+
+# ===== Claude Code =====
+.claude/
+CLAUDE.md
+
+# ===== Project specific =====
+codelens-ui-mockup/
+build.md
+otherdocs/

@@ -1,0 +1,264 @@
+server:
+  port: ${SERVER_PORT:9292}
+  # Trust forwarded headers from Node proxy
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: codelens
+
+  # OAuth2 is configured programmatically in OAuth2ClientConfig.java
+  # based on which providers have credentials set in environment variables
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/codelens?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update  # Auto-update schema (Flyway disabled)
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        format_sql: true
+
+  flyway:
+    enabled: false
+    # baseline-on-migrate: true  # Creates baseline for existing databases
+    # baseline-version: 1        # Single consolidated migration
+    # locations: classpath:db/migration
+    # validate-on-migrate: true
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    default-property-inclusion: non_null
+
+# CodeLens Configuration
+codelens:
+  # Frontend URL for generating review links in PR comments
+  frontend-url: ${FRONTEND_URL:http://localhost:5174}
+
+  llm:
+    # Default: ollama (no API key needed, runs locally)
+    # Other options: claude, openai, gemini, glm
+    # Set the corresponding API key environment variable for cloud providers
+    default-provider: ${LLM_DEFAULT_PROVIDER:ollama}
+
+    # =====================================================================
+    # SUPPORTED PROVIDERS & MODELS
+    # =====================================================================
+    # Provider      | Models (recommended first)
+    # --------------|----------------------------------------------------
+    # ollama        | devstral-small, codellama, llama3.1, deepseek-coder-v2, qwen2.5-coder
+    # claude        | claude-sonnet-4-20250514, claude-opus-4-20250514, claude-3-5-sonnet-20241022
+    # gemini        | gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash
+    # gemini-pro    | gemini-2.5-pro, gemini-1.5-pro (higher quality, slower)
+    # openai        | gpt-4o, gpt-4o-mini, gpt-4-turbo, o1, o1-mini
+    # glm           | glm-4, glm-4-flash (ZhipuAI)
+    # =====================================================================
+
+    providers:
+      ollama:
+        # Local LLM - no API key needed
+        # Install: https://ollama.ai | Pull: ollama pull devstral-small
+        # Models: devstral-small, codellama, llama3.1, deepseek-coder-v2, qwen2.5-coder
+        enabled: true
+        model: ${OLLAMA_MODEL:devstral-small}
+        base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+
+      claude:
+        # Anthropic - best for complex code review
+        # Models: claude-sonnet-4-20250514, claude-opus-4-20250514, claude-3-5-sonnet-20241022
+        enabled: true
+        model: claude-sonnet-4-20250514
+        api-key: ${ANTHROPIC_API_KEY:}
+
+      gemini:
+        # Google - fast and cost-effective
+        # Models: gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash
+        enabled: true
+        model: gemini-2.5-flash
+        api-key: ${GOOGLE_API_KEY:}
+
+      gemini-pro:
+        # Google Pro - higher quality, slower
+        # Models: gemini-2.5-pro, gemini-1.5-pro
+        enabled: true
+        model: gemini-2.5-pro
+        api-key: ${GOOGLE_API_KEY:}
+
+      openai:
+        # OpenAI - widely used
+        # Models: gpt-4o, gpt-4o-mini, gpt-4-turbo, o1, o1-mini
+        enabled: true
+        model: gpt-4o
+        api-key: ${OPENAI_API_KEY:}
+
+      glm:
+        # ZhipuAI - Chinese LLM provider
+        # Models: glm-4, glm-4-flash
+        enabled: true
+        model: glm-4
+        api-key: ${ZAI_API_KEY:}
+
+    # Task-based routing (defaults to ollama for self-hosted)
+    # Change to gemini/claude for cloud-based with API keys
+    routing:
+      summary: ${LLM_DEFAULT_PROVIDER:ollama}   # Fast model for PR summaries
+      review: ${LLM_DEFAULT_PROVIDER:ollama}    # Default model for code review
+      security: ${LLM_DEFAULT_PROVIDER:ollama}  # Security analysis
+      fallback: ollama                          # Offline fallback
+
+    # Automatic fallback on provider failure
+    fallback:
+      enabled: true          # Auto-retry with different provider on failure
+      max-attempts: 3        # Max providers to try before giving up
+
+  git:
+    default-provider: github
+
+    github:
+      app-id: ${GITHUB_APP_ID:}
+      private-key-path: ${GITHUB_PRIVATE_KEY_PATH:}
+      webhook-secret: ${GITHUB_WEBHOOK_SECRET:}
+
+    gitlab:
+      url: ${GITLAB_URL:https://gitlab.com}
+      token: ${GITLAB_TOKEN:}
+      webhook-secret: ${GITLAB_WEBHOOK_SECRET:}
+
+  review:
+    max-files: 50
+    max-lines-per-file: 1000
+    max-diff-lines: 3000
+    enable-security-scan: true
+    enable-auto-summary: true
+
+    # Performance optimization
+    parallel-threads: 5        # Number of files to review concurrently
+    skip-tests: true           # Skip test files (*Test.java, *.spec.ts, etc.)
+    skip-generated: true       # Skip generated files
+
+    languages:
+      - java
+      - javascript
+      - typescript
+      - jsx
+      - tsx
+
+  analysis:
+    enabled: true
+    node-path: ${NODE_PATH:node}
+
+    pmd:
+      enabled: true
+      ruleset: classpath:rules/pmd-ruleset.xml
+
+    spotbugs:
+      enabled: true
+      effort: max
+      threshold: medium
+      include-findsecbugs: true
+
+    checkstyle:
+      enabled: true
+      config: classpath:rules/checkstyle-config.xml
+
+    eslint:
+      enabled: true
+      config-path: codelens-eslint/eslint.config.js
+      react: true
+      nextjs: true
+      typescript: true
+      security-plugins: true
+
+    npm-audit:
+      enabled: true
+      fail-on-severity: high
+
+    owasp:
+      enabled: true
+      fail-on-cvss: 7.0
+      update-on-startup: false
+
+  # Async processing configuration
+  async:
+    core-pool-size: 5
+    max-pool-size: 20
+    queue-capacity: 100
+    thread-name-prefix: codelens-review-
+    keep-alive-seconds: 60
+
+  # Cost tracking and quota enforcement
+  cost:
+    track-usage: true
+    enforce-daily-limit: ${ENFORCE_DAILY_LIMIT:true}
+    daily-limit-usd: ${DAILY_LLM_LIMIT:10.00}
+    alert-threshold-daily: 5.00
+    alert-threshold-monthly: 200.00
+
+  # Security
+  security:
+    # Encryption key for sensitive data (git tokens, etc.)
+    # REQUIRED: Set ENCRYPTION_KEY env var to a secure 32+ character random string
+    # Generate with: openssl rand -base64 32
+    encryption-key: ${ENCRYPTION_KEY:}
+    encryption-enabled: ${ENCRYPTION_ENABLED:true}
+    jwt:
+      # REQUIRED: Set JWT_SECRET env var to a secure 32+ character random string
+      # Generate with: openssl rand -base64 32
+      secret: ${JWT_SECRET:}
+      access-token-expiration: 3600000      # 1 hour
+      refresh-token-expiration: 604800000   # 7 days
+    oauth2:
+      success-redirect-url: ${OAUTH2_REDIRECT_URL:http://localhost:5174/auth/callback}
+    github:
+      # Restrict GitHub login to members of this organization (leave empty to allow all)
+      required-org: ${GITHUB_REQUIRED_ORG:}
+    cors:
+      # Comma-separated list of allowed origins for CORS
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5174}
+
+  # CI/CD Integration
+  # Endpoint: POST /api/ci/review
+  # Headers: X-API-Key: <your-api-key>
+  ci:
+    enabled: true
+    require-api-key: true
+    require-ip-whitelist: false
+    # API keys for CI/CD tools (comma-separated or list)
+    # Generate secure keys: openssl rand -hex 32
+    api-keys:
+      - ${CI_API_KEY_1:}
+      - ${CI_API_KEY_2:}
+    # Allowed IPs (supports CIDR notation like 10.0.0.0/8)
+    # Common Jenkins/CI IPs, localhost for testing
+    allowed-ips:
+      - 127.0.0.1
+      - ::1
+      # Add your Jenkins server IPs:
+      # - 10.0.0.0/8
+      # - 192.168.1.100
+
+  # Webhook delivery configuration
+  webhooks:
+    max-failures: 5              # Failures before disabling webhook
+    max-payload-kb: 256          # Max webhook payload size in KB
+    backoff-hours: 1,2,4,8,24    # Exponential backoff sequence (hours)
+    max-retry-count: 10          # Max auto-retry attempts before permanent disable
+
+# Logging - detailed config in logback-spring.xml
+logging:
+  file:
+    path: ${LOG_PATH:logs}
+    name: ${LOG_PATH:logs}/codelens.log
+  level:
+    com.codelens: INFO
+    com.codelens.llm.providers: INFO
+    org.springframework.web: WARN
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql: WARN

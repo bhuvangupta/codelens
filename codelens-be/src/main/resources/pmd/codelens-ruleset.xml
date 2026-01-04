@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<ruleset name="CodeLens PMD Ruleset"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+
+    <description>
+        Custom PMD ruleset for CodeLens code reviews.
+        Excludes rules that are noisy or irrelevant with modern frameworks.
+    </description>
+
+    <!-- Best Practices - exclude noisy rules -->
+    <rule ref="category/java/bestpractices.xml">
+        <!-- SLF4J parameterized logging already handles lazy evaluation -->
+        <exclude name="GuardLogStatement"/>
+        <!-- Lombok @Getter/@Setter makes this unnecessary -->
+        <exclude name="UnusedPrivateField"/>
+    </rule>
+
+    <!-- Error Prone rules -->
+    <rule ref="category/java/errorprone.xml">
+        <!-- Allow null assignments for GC hints in specific cases -->
+        <exclude name="NullAssignment"/>
+    </rule>
+
+    <!-- Security rules - keep all -->
+    <rule ref="category/java/security.xml"/>
+
+</ruleset>
