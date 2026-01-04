@@ -1,0 +1,50 @@
+# Build output
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# Test files
+src/test/
+
+# Documentation
+*.md
+!README.md
+LICENSE
+
+# Scripts (not needed in container)
+scripts/
+
+# Docker files
+docker-compose*.yml
+Dockerfile*
+
+# Misc
+.editorconfig
+.gitattributes

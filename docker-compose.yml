@@ -1,0 +1,132 @@
+version: '3.8'
+
+# Full-stack development: Backend + Frontend + MySQL
+# Usage: docker-compose up -d
+#
+# REQUIRED: Set these environment variables before running:
+#   - DB_PASSWORD: Database password
+#   - DB_ROOT_PASSWORD: MySQL root password
+#   - JWT_SECRET: JWT signing secret (32+ chars)
+#   - ENCRYPTION_KEY: Data encryption key (32+ chars)
+#
+# Example:
+#   export DB_PASSWORD=your-secure-password
+#   export DB_ROOT_PASSWORD=your-root-password
+#   docker-compose up -d
+
+services:
+  # CodeLens Backend API
+  backend:
+    build:
+      context: ./codelens-be
+      dockerfile: Dockerfile
+    container_name: codelens-backend
+    ports:
+      - "9292:9292"
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/codelens?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME:-codelens}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
+      - JAVA_OPTS=-Xmx512m -Xms256m
+    env_file:
+      - ./codelens-be/.env
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9292/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - codelens-network
+    volumes:
+      - backend-logs:/app/logs
+
+  # CodeLens Frontend UI
+  frontend:
+    build:
+      context: ./codelens-fe
+      dockerfile: Dockerfile
+    container_name: codelens-frontend
+    ports:
+      - "5174:5174"
+    environment:
+      - NODE_ENV=production
+      - PORT=5174
+      # BACKEND_URL: Used by SSR (server-side) - Docker internal network
+      - BACKEND_URL=http://backend:9292
+      # PUBLIC_API_URL: Used by browser for WebSockets - set to host IP/domain
+      # Leave empty to use default localhost, or set via .env file
+    env_file:
+      - ./codelens-fe/.env
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5174"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - codelens-network
+
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: codelens-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_DATABASE=codelens
+      - MYSQL_USER=${DB_USERNAME:-codelens}
+      - MYSQL_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD is required}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - codelens-network
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  # Redis Cache (optional - use: docker-compose --profile with-cache up)
+  redis:
+    image: redis:7-alpine
+    container_name: codelens-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - codelens-network
+    profiles:
+      - with-cache
+
+networks:
+  codelens-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+    driver: local
+  redis-data:
+    driver: local
+  backend-logs:
+    driver: local

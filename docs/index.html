@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeLens - AI-Powered Code Review</title>
+    <meta name="description" content="AI-powered code review tool that combines multiple LLMs with static analysis to catch bugs, security issues, and performance problems before they reach production.">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="icon" type="image/png" href="codelens.png">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        * { font-family: 'Inter', sans-serif; }
+
+        /* Animated gradient background */
+        .hero-bg {
+            background: linear-gradient(-45deg, #451a03, #78350f, #92400e, #451a03);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+            position: relative;
+            overflow: hidden;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Floating particles */
+        .particles {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 50%;
+            animation: float 20s infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-100vh) rotate(720deg); opacity: 0; }
+        }
+
+        /* AI Brain animation */
+        .ai-brain {
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+        }
+
+        /* Glowing effect */
+        .glow {
+            box-shadow: 0 0 40px rgba(255,255,255,0.2);
+            animation: glow 3s ease-in-out infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% { box-shadow: 0 0 40px rgba(255,255,255,0.2); }
+            50% { box-shadow: 0 0 60px rgba(255,255,255,0.4); }
+        }
+
+        /* Typing animation */
+        .typewriter {
+            overflow: hidden;
+            border-right: 3px solid rgba(255,255,255,0.75);
+            white-space: nowrap;
+            animation: typing 3.5s steps(40, end), blink-caret 0.75s step-end infinite;
+        }
+
+        @keyframes typing {
+            from { width: 0; }
+            to { width: 100%; }
+        }
+
+        @keyframes blink-caret {
+            from, to { border-color: transparent; }
+            50% { border-color: rgba(255,255,255,0.75); }
+        }
+
+        /* Feature card hover */
+        .feature-card {
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            background: white;
+            border: 1px solid #e5e7eb;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+            border-color: #78350f;
+        }
+
+        .feature-card .icon-wrapper {
+            transition: all 0.4s ease;
+        }
+
+        .feature-card:hover .icon-wrapper {
+            transform: rotate(10deg) scale(1.1);
+        }
+
+        /* Code block styling */
+        .code-block {
+            background: linear-gradient(135deg, #1c1917 0%, #292524 100%);
+            border-radius: 16px;
+            border: 1px solid #3f3f46;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .code-block::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+        }
+
+        /* Scroll reveal */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.8s ease;
+        }
+
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Neural network lines */
+        .neural-line {
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+            animation: drawLine 3s ease forwards;
+        }
+
+        @keyframes drawLine {
+            to { stroke-dashoffset: 0; }
+        }
+
+        /* Stats counter */
+        .stat-number {
+            background: linear-gradient(135deg, #451a03, #78350f);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Smooth scrolling */
+        html { scroll-behavior: smooth; }
+
+        /* Button animations */
+        .btn-primary {
+            background: linear-gradient(135deg, #451a03, #78350f);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn-primary:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(69, 26, 3, 0.4);
+        }
+
+        /* Step connector animation */
+        .step-connector {
+            position: relative;
+        }
+
+        .step-connector::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 100%;
+            width: 60px;
+            height: 2px;
+            background: linear-gradient(90deg, #78350f, transparent);
+            animation: connectorPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes connectorPulse {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        /* Carousel */
+        .carousel-container {
+            position: relative;
+            max-width: 1000px;
+            margin: 0 auto;
+            overflow: hidden;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+
+        .carousel-track {
+            display: flex;
+            transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .carousel-slide {
+            min-width: 100%;
+            position: relative;
+        }
+
+        .carousel-slide img {
+            width: 100%;
+            display: block;
+        }
+
+        .carousel-caption {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0,0,0,0.8));
+            color: white;
+            padding: 3rem 2rem 1.5rem;
+        }
+
+        .carousel-caption h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .carousel-caption p {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        /* Carousel Navigation Arrows */
+        .carousel-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 50px;
+            height: 50px;
+            background: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .carousel-btn:hover {
+            transform: translateY(-50%) scale(1.1);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+
+        .carousel-btn svg {
+            width: 24px;
+            height: 24px;
+            color: #451a03;
+        }
+
+        .carousel-btn.prev {
+            left: 1rem;
+        }
+
+        .carousel-btn.next {
+            right: 1rem;
+        }
+
+        /* Carousel Dots */
+        .carousel-dots {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .carousel-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #d1d5db;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            padding: 0;
+        }
+
+        .carousel-dot:hover {
+            background: #9ca3af;
+        }
+
+        .carousel-dot.active {
+            background: linear-gradient(135deg, #451a03, #78350f);
+            transform: scale(1.2);
+        }
+
+        /* Carousel Progress Bar */
+        .carousel-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #451a03, #78350f);
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        /* Lightbox */
+        .lightbox {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+        }
+
+        .lightbox.active {
+            display: flex;
+        }
+
+        .lightbox img {
+            max-width: 90%;
+            max-height: 85%;
+            border-radius: 8px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            color: white;
+            font-size: 2rem;
+            cursor: pointer;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+            transition: all 0.3s ease;
+        }
+
+        .lightbox-close:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .lightbox-caption {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 1.1rem;
+            background: rgba(0,0,0,0.7);
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .lightbox-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            color: white;
+            font-size: 3rem;
+            cursor: pointer;
+            padding: 1rem;
+            transition: all 0.3s ease;
+            user-select: none;
+        }
+
+        .lightbox-nav:hover {
+            color: #fde68a;
+        }
+
+        .lightbox-nav.prev { left: 1rem; }
+        .lightbox-nav.next { right: 1rem; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-md fixed w-full z-50">
+        <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <img src="codelens.png" alt="CodeLens" class="w-8 h-8 ai-brain">
+                <span class="text-xl font-bold" style="color: #451a03;">CodeLens</span>
+            </div>
+            <div class="flex items-center space-x-6">
+                <a href="#features" class="hidden md:block hover:text-amber-700 transition" style="color: #78350f;">Features</a>
+                <a href="#screenshots" class="hidden md:block hover:text-amber-700 transition" style="color: #78350f;">Screenshots</a>
+                <a href="#quick-start" class="hidden md:block hover:text-amber-700 transition" style="color: #78350f;">Quick Start</a>
+                <a href="https://github.com/bhuvangupta/codelens" class="btn-primary px-5 py-2 rounded-lg font-medium text-white flex items-center space-x-2">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                    <span>GitHub</span>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="hero-bg text-white pt-24 pb-32 relative">
+        <!-- Animated particles -->
+        <div class="particles" id="particles"></div>
+
+        <!-- AI Network SVG Background -->
+        <svg class="absolute inset-0 w-full h-full opacity-10" viewBox="0 0 800 600">
+            <defs>
+                <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style="stop-color:white;stop-opacity:0"/>
+                    <stop offset="50%" style="stop-color:white;stop-opacity:1"/>
+                    <stop offset="100%" style="stop-color:white;stop-opacity:0"/>
+                </linearGradient>
+            </defs>
+            <g stroke="url(#lineGrad)" stroke-width="1" fill="none">
+                <path class="neural-line" d="M100,300 Q250,200 400,300 T700,300" style="animation-delay: 0s"/>
+                <path class="neural-line" d="M50,400 Q200,300 400,350 T750,250" style="animation-delay: 0.5s"/>
+                <path class="neural-line" d="M0,200 Q150,350 350,250 T700,400" style="animation-delay: 1s"/>
+            </g>
+            <g fill="white" opacity="0.5">
+                <circle cx="100" cy="300" r="4"><animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite"/></circle>
+                <circle cx="250" cy="200" r="4"><animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite" begin="0.3s"/></circle>
+                <circle cx="400" cy="300" r="6"><animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite" begin="0.6s"/></circle>
+                <circle cx="550" cy="350" r="4"><animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite" begin="0.9s"/></circle>
+                <circle cx="700" cy="300" r="4"><animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite" begin="1.2s"/></circle>
+            </g>
+        </svg>
+
+        <div class="container mx-auto px-6 text-center relative z-10">
+            <!-- AI Badge -->
+            <div class="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full mb-8 glow">
+                <span class="relative flex h-3 w-3">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                </span>
+                <span class="text-sm font-medium">Powered by AI</span>
+            </div>
+
+            <h1 class="text-5xl md:text-7xl font-bold mb-6 leading-tight">
+                AI-Powered<br>
+                <span class="bg-gradient-to-r from-amber-200 to-white bg-clip-text text-transparent">Code Review</span>
+            </h1>
+
+            <p class="text-xl text-amber-100 mb-10 max-w-2xl mx-auto leading-relaxed">
+                Catch bugs, security vulnerabilities, and performance issues before they reach production.
+                Route different review tasks to the best LLM for the job - or run entirely local with Ollama.
+            </p>
+
+            <div class="flex flex-col sm:flex-row justify-center gap-4">
+                <a href="https://github.com/bhuvangupta/codelens" class="btn-primary px-8 py-4 rounded-xl font-semibold text-white flex items-center justify-center space-x-2 text-lg">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                    <span>View on GitHub</span>
+                </a>
+                <a href="#quick-start" class="bg-white/10 backdrop-blur-sm border-2 border-white/30 px-8 py-4 rounded-xl font-semibold text-white hover:bg-white/20 transition flex items-center justify-center space-x-2 text-lg">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    <span>Quick Start</span>
+                </a>
+            </div>
+
+            <!-- Tech logos -->
+            <div class="mt-16 flex flex-wrap justify-center items-center gap-8 opacity-60">
+                <span class="text-sm">Supports:</span>
+                <span class="font-semibold">Ollama (Local)</span>
+                <span class="font-semibold">Claude</span>
+                <span class="font-semibold">Gemini</span>
+                <span class="font-semibold">GPT-4</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Features Section -->
+    <section id="features" class="py-24 bg-white">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-16 reveal">
+                <span class="inline-block px-4 py-1 rounded-full text-sm font-medium mb-4" style="background: #fef3c7; color: #92400e;">Features</span>
+                <h2 class="text-4xl md:text-5xl font-bold mb-4" style="color: #1c1917;">Powerful Features</h2>
+                <p class="text-gray-600 max-w-2xl mx-auto text-lg">
+                    Everything you need for comprehensive, automated code reviews
+                </p>
+            </div>
+
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- Feature 1 -->
+                <div class="feature-card p-8 rounded-2xl reveal">
+                    <div class="icon-wrapper w-14 h-14 rounded-xl flex items-center justify-center mb-6" style="background: linear-gradient(135deg, #fef3c7, #fde68a);">
+                        <svg class="w-7 h-7" style="color: #92400e;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-3" style="color: #1c1917;">Smart Model Routing</h3>
+                    <p class="text-gray-600 leading-relaxed">Use different LLMs for different tasks: fast models for summaries, powerful models for security analysis, local Ollama as free fallback.</p>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="feature-card p-8 rounded-2xl reveal" style="animation-delay: 0.1s;">
+                    <div class="icon-wrapper w-14 h-14 rounded-xl flex items-center justify-center mb-6" style="background: linear-gradient(135deg, #d1fae5, #a7f3d0);">
+                        <svg class="w-7 h-7 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-3" style="color: #1c1917;">Security Scanning</h3>
+                    <p class="text-gray-600 leading-relaxed">Detect OWASP Top 10 vulnerabilities, CVEs, and security anti-patterns with integrated security tools.</p>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="feature-card p-8 rounded-2xl reveal" style="animation-delay: 0.2s;">
+                    <div class="icon-wrapper w-14 h-14 rounded-xl flex items-center justify-center mb-6" style="background: linear-gradient(135deg, #dbeafe, #bfdbfe);">
+                        <svg class="w-7 h-7 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-3" style="color: #1c1917;">Static Analysis</h3>
+                    <p class="text-gray-600 leading-relaxed">PMD, Checkstyle, SpotBugs for Java. ESLint for JS/TS. Ruff, Bandit for Python. Clippy for Rust.</p>
+                </div>
+
+                <!-- Feature 4 -->
+                <div class="feature-card p-8 rounded-2xl reveal" style="animation-delay: 0.3s;">
+                    <div class="icon-wrapper w-14 h-14 rounded-xl flex items-center justify-center mb-6" style="background: linear-gradient(135deg, #fef9c3, #fde047);">
+                        <svg class="w-7 h-7 text-yellow-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-3" style="color: #1c1917;">Real-time Progress</h3>
+                    <p class="text-gray-600 leading-relaxed">Watch your review progress live. See which files are being analyzed and get instant feedback.</p>
+                </div>
+
+                <!-- Feature 5 -->
+                <div class="feature-card p-8 rounded-2xl reveal" style="animation-delay: 0.4s;">
+                    <div class="icon-wrapper w-14 h-14 rounded-xl flex items-center justify-center mb-6" style="background: linear-gradient(135deg, #fee2e2, #fecaca);">
+                        <svg class="w-7 h-7 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-3" style="color: #1c1917;">Cost Tracking</h3>
+                    <p class="text-gray-600 leading-relaxed">Monitor LLM token usage and costs. Set daily limits and get alerts before exceeding budgets.</p>
+                </div>
+
+                <!-- Feature 6 -->
+                <div class="feature-card p-8 rounded-2xl reveal" style="animation-delay: 0.5s;">
+                    <div class="icon-wrapper w-14 h-14 rounded-xl flex items-center justify-center mb-6" style="background: linear-gradient(135deg, #e0e7ff, #c7d2fe);">
+                        <svg class="w-7 h-7 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-3" style="color: #1c1917;">CI/CD Integration</h3>
+                    <p class="text-gray-600 leading-relaxed">Jenkins, GitHub Actions, GitLab CI support. Automated reviews on every pull request.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section id="how-it-works" class="py-24 bg-gray-50">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-16 reveal">
+                <span class="inline-block px-4 py-1 rounded-full text-sm font-medium mb-4" style="background: #fef3c7; color: #92400e;">How It Works</span>
+                <h2 class="text-4xl md:text-5xl font-bold mb-4" style="color: #1c1917;">Three Simple Steps</h2>
+                <p class="text-gray-600 max-w-2xl mx-auto text-lg">
+                    Get comprehensive code reviews in minutes
+                </p>
+            </div>
+
+            <div class="flex flex-col md:flex-row justify-center items-center gap-8 md:gap-4">
+                <!-- Step 1 -->
+                <div class="text-center reveal flex-1 max-w-xs">
+                    <div class="relative inline-block mb-6">
+                        <div class="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-bold text-white mx-auto" style="background: linear-gradient(135deg, #451a03, #78350f);">1</div>
+                        <div class="absolute -top-2 -right-2 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2" style="color: #1c1917;">Submit PR URL</h3>
+                    <p class="text-gray-600">Paste your GitHub or GitLab pull request URL into CodeLens</p>
+                </div>
+
+                <!-- Arrow -->
+                <svg class="hidden md:block w-12 h-12 text-amber-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                </svg>
+
+                <!-- Step 2 -->
+                <div class="text-center reveal flex-1 max-w-xs" style="animation-delay: 0.2s;">
+                    <div class="relative inline-block mb-6">
+                        <div class="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-bold text-white mx-auto ai-brain" style="background: linear-gradient(135deg, #451a03, #78350f);">2</div>
+                        <div class="absolute -top-2 -right-2 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                            <svg class="w-4 h-4 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2" style="color: #1c1917;">AI Analyzes Code</h3>
+                    <p class="text-gray-600">LLMs and static analyzers review every changed file</p>
+                </div>
+
+                <!-- Arrow -->
+                <svg class="hidden md:block w-12 h-12 text-amber-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                </svg>
+
+                <!-- Step 3 -->
+                <div class="text-center reveal flex-1 max-w-xs" style="animation-delay: 0.4s;">
+                    <div class="relative inline-block mb-6">
+                        <div class="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-bold text-white mx-auto" style="background: linear-gradient(135deg, #451a03, #78350f);">3</div>
+                        <div class="absolute -top-2 -right-2 w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center">
+                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2" style="color: #1c1917;">Get Feedback</h3>
+                    <p class="text-gray-600">Review issues by severity with suggested fixes</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Screenshots Section -->
+    <section id="screenshots" class="py-24 bg-gray-50">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-12 reveal">
+                <span class="inline-block px-4 py-1 rounded-full text-sm font-medium mb-4" style="background: #fef3c7; color: #92400e;">Preview</span>
+                <h2 class="text-4xl md:text-5xl font-bold mb-4" style="color: #1c1917;">See It In Action</h2>
+                <p class="text-gray-600 max-w-2xl mx-auto text-lg">
+                    A clean, intuitive interface designed for developer productivity
+                </p>
+            </div>
+
+            <!-- Carousel -->
+            <div class="carousel-container reveal" id="carousel">
+                <div class="carousel-track" id="carouselTrack">
+                    <!-- Slide 1: Dashboard -->
+                    <div class="carousel-slide" data-title="Dashboard" data-desc="Overview of recent reviews and key metrics">
+                        <img src="screenshots/2_dashboard.jpg" alt="Dashboard">
+                        <div class="carousel-caption">
+                            <h3>Dashboard</h3>
+                            <p>Overview of recent reviews and key metrics</p>
+                        </div>
+                    </div>
+                    <!-- Slide 2: Submit Review -->
+                    <div class="carousel-slide" data-title="Submit Review" data-desc="Paste any GitHub or GitLab pull request URL">
+                        <img src="screenshots/4_submit_review.jpg" alt="Submit Review">
+                        <div class="carousel-caption">
+                            <h3>Submit Review</h3>
+                            <p>Paste any GitHub or GitLab pull request URL</p>
+                        </div>
+                    </div>
+                    <!-- Slide 3: Review Details -->
+                    <div class="carousel-slide" data-title="Review Details" data-desc="AI-generated findings organized by severity">
+                        <img src="screenshots/5_review_details_1.jpg" alt="Review Details">
+                        <div class="carousel-caption">
+                            <h3>Review Details</h3>
+                            <p>AI-generated findings organized by severity</p>
+                        </div>
+                    </div>
+                    <!-- Slide 4: Issue Details -->
+                    <div class="carousel-slide" data-title="Issue Details" data-desc="Detailed descriptions with suggested fixes">
+                        <img src="screenshots/5_review_details_2.jpg" alt="Issue Details">
+                        <div class="carousel-caption">
+                            <h3>Issue Details</h3>
+                            <p>Detailed descriptions with suggested fixes</p>
+                        </div>
+                    </div>
+                    <!-- Slide 5: Analytics -->
+                    <div class="carousel-slide" data-title="Analytics" data-desc="Track review trends, patterns, and LLM costs">
+                        <img src="screenshots/6_analytics.jpg" alt="Analytics">
+                        <div class="carousel-caption">
+                            <h3>Analytics</h3>
+                            <p>Track review trends, patterns, and LLM costs</p>
+                        </div>
+                    </div>
+                    <!-- Slide 6: Custom Rules -->
+                    <div class="carousel-slide" data-title="Custom Rules" data-desc="Define your own review rules with regex patterns">
+                        <img src="screenshots/8_settings_custom_rules.jpg" alt="Custom Rules">
+                        <div class="carousel-caption">
+                            <h3>Custom Rules</h3>
+                            <p>Define your own review rules with regex patterns</p>
+                        </div>
+                    </div>
+                    <!-- Slide 7: Webhooks -->
+                    <div class="carousel-slide" data-title="Webhooks" data-desc="Configure webhooks for CI/CD integration">
+                        <img src="screenshots/9_settings_webhooks.jpg" alt="Webhooks">
+                        <div class="carousel-caption">
+                            <h3>Webhooks</h3>
+                            <p>Configure webhooks for CI/CD integration</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Navigation Arrows -->
+                <button class="carousel-btn prev" onclick="prevSlide()" aria-label="Previous slide">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                </button>
+                <button class="carousel-btn next" onclick="nextSlide()" aria-label="Next slide">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                </button>
+
+                <!-- Progress Bar -->
+                <div class="carousel-progress" id="carouselProgress"></div>
+            </div>
+
+            <!-- Dots -->
+            <div class="carousel-dots" id="carouselDots"></div>
+
+            <!-- Click to expand hint -->
+            <p class="text-center text-gray-500 text-sm mt-4">Click on image to expand</p>
+        </div>
+    </section>
+
+    <!-- Lightbox -->
+    <div id="lightbox" class="lightbox">
+        <div class="lightbox-close" onclick="closeLightbox()">&times;</div>
+        <div class="lightbox-nav prev" onclick="lightboxPrev()">&#10094;</div>
+        <div class="lightbox-nav next" onclick="lightboxNext()">&#10095;</div>
+        <img id="lightbox-img" src="" alt="">
+        <div id="lightbox-caption" class="lightbox-caption"></div>
+    </div>
+
+    <!-- Quick Start -->
+    <section id="quick-start" class="py-24 text-white hero-bg relative overflow-hidden">
+        <div class="particles" id="particles2"></div>
+        <div class="container mx-auto px-6 relative z-10">
+            <div class="text-center mb-12 reveal">
+                <span class="inline-block px-4 py-1 rounded-full text-sm font-medium mb-4 bg-white/20 backdrop-blur-sm">Get Started</span>
+                <h2 class="text-4xl md:text-5xl font-bold mb-4">Quick Start</h2>
+                <p class="text-amber-100 max-w-2xl mx-auto text-lg">
+                    Get up and running in minutes
+                </p>
+            </div>
+
+            <div class="max-w-3xl mx-auto reveal">
+                <div class="code-block p-6 mb-6">
+                    <div class="flex items-center space-x-2 mb-4">
+                        <div class="w-3 h-3 bg-red-500 rounded-full"></div>
+                        <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                        <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                        <span class="text-gray-500 text-sm ml-2 font-mono">Terminal</span>
+                    </div>
+                    <pre class="text-green-400 overflow-x-auto font-mono text-sm leading-relaxed"><code><span class="text-gray-500"># Clone the repository</span>
+git clone https://github.com/bhuvangupta/codelens.git
+cd codelens
+
+<span class="text-gray-500"># Set up backend</span>
+cd codelens-be
+cp .env.example .env
+<span class="text-gray-500"># Edit .env with your API keys</span>
+./mvnw spring-boot:run
+
+<span class="text-gray-500"># Set up frontend (new terminal)</span>
+cd codelens-fe
+cp .env.example .env
+npm install && npm run dev
+
+<span class="text-gray-500"># Open http://localhost:5174</span></code></pre>
+                </div>
+
+                <p class="text-center text-amber-100">
+                    See the <a href="https://github.com/bhuvangupta/codelens#readme" class="text-white underline hover:text-amber-200 font-medium">README</a> for detailed setup instructions.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tech Stack -->
+    <section class="py-24 bg-white">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-12 reveal">
+                <h2 class="text-3xl font-bold" style="color: #1c1917;">Built With</h2>
+            </div>
+
+            <div class="flex flex-wrap justify-center items-center gap-12 reveal">
+                <div class="text-center group">
+                    <div class="text-5xl mb-3 group-hover:scale-110 transition">☕</div>
+                    <div class="font-medium text-gray-700">Java 21</div>
+                </div>
+                <div class="text-center group">
+                    <div class="text-5xl mb-3 group-hover:scale-110 transition">🍃</div>
+                    <div class="font-medium text-gray-700">Spring Boot</div>
+                </div>
+                <div class="text-center group">
+                    <div class="text-5xl mb-3 group-hover:scale-110 transition">🔶</div>
+                    <div class="font-medium text-gray-700">SvelteKit</div>
+                </div>
+                <div class="text-center group">
+                    <div class="text-5xl mb-3 group-hover:scale-110 transition">🐬</div>
+                    <div class="font-medium text-gray-700">MySQL</div>
+                </div>
+                <div class="text-center group">
+                    <div class="text-5xl mb-3 group-hover:scale-110 transition">🤖</div>
+                    <div class="font-medium text-gray-700">LangChain4j</div>
+                </div>
+                <div class="text-center group">
+                    <div class="text-5xl mb-3 group-hover:scale-110 transition">🎨</div>
+                    <div class="font-medium text-gray-700">Tailwind CSS</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-gray-100 text-gray-600 py-12">
+        <div class="container mx-auto px-6">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="flex items-center space-x-2 mb-4 md:mb-0">
+                    <img src="codelens.png" alt="CodeLens" class="w-6 h-6">
+                    <span class="font-bold" style="color: #451a03;">CodeLens</span>
+                </div>
+
+                <div class="flex space-x-6">
+                    <a href="https://github.com/bhuvangupta/codelens" class="hover:text-amber-800 transition">GitHub</a>
+                    <a href="https://github.com/bhuvangupta/codelens/blob/main/LICENSE" class="hover:text-amber-800 transition">License</a>
+                    <a href="https://github.com/bhuvangupta/codelens/blob/main/CONTRIBUTING.md" class="hover:text-amber-800 transition">Contributing</a>
+                </div>
+            </div>
+
+            <div class="border-t border-gray-300 mt-8 pt-8 text-center text-sm">
+                <p>Released under the Apache 2.0 License</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Create floating particles
+        function createParticles(containerId, count) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            for (let i = 0; i < count; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 20 + 's';
+                particle.style.animationDuration = (15 + Math.random() * 10) + 's';
+                container.appendChild(particle);
+            }
+        }
+
+        createParticles('particles', 30);
+        createParticles('particles2', 20);
+
+        // Scroll reveal animation
+        function reveal() {
+            const reveals = document.querySelectorAll('.reveal');
+            reveals.forEach(element => {
+                const windowHeight = window.innerHeight;
+                const elementTop = element.getBoundingClientRect().top;
+                const elementVisible = 150;
+
+                if (elementTop < windowHeight - elementVisible) {
+                    element.classList.add('active');
+                }
+            });
+        }
+
+        window.addEventListener('scroll', reveal);
+        reveal(); // Initial check
+
+        // ==================== CAROUSEL ====================
+        const slides = document.querySelectorAll('.carousel-slide');
+        const track = document.getElementById('carouselTrack');
+        const dotsContainer = document.getElementById('carouselDots');
+        const progressBar = document.getElementById('carouselProgress');
+        let currentSlide = 0;
+        let autoPlayInterval;
+        let progressInterval;
+        const autoPlayDelay = 5000; // 5 seconds
+
+        // Create dots
+        slides.forEach((_, index) => {
+            const dot = document.createElement('button');
+            dot.className = 'carousel-dot' + (index === 0 ? ' active' : '');
+            dot.onclick = () => goToSlide(index);
+            dotsContainer.appendChild(dot);
+        });
+
+        // Make slides clickable
+        slides.forEach((slide, index) => {
+            slide.style.cursor = 'pointer';
+            slide.onclick = () => openLightbox(index);
+        });
+
+        function updateCarousel() {
+            track.style.transform = `translateX(-${currentSlide * 100}%)`;
+            document.querySelectorAll('.carousel-dot').forEach((dot, index) => {
+                dot.classList.toggle('active', index === currentSlide);
+            });
+        }
+
+        function nextSlide() {
+            currentSlide = (currentSlide + 1) % slides.length;
+            updateCarousel();
+            resetAutoPlay();
+        }
+
+        function prevSlide() {
+            currentSlide = (currentSlide - 1 + slides.length) % slides.length;
+            updateCarousel();
+            resetAutoPlay();
+        }
+
+        function goToSlide(index) {
+            currentSlide = index;
+            updateCarousel();
+            resetAutoPlay();
+        }
+
+        function startAutoPlay() {
+            // Progress bar animation
+            let progress = 0;
+            progressBar.style.width = '0%';
+
+            progressInterval = setInterval(() => {
+                progress += 100 / (autoPlayDelay / 100);
+                progressBar.style.width = Math.min(progress, 100) + '%';
+            }, 100);
+
+            autoPlayInterval = setInterval(() => {
+                nextSlide();
+                progress = 0;
+                progressBar.style.width = '0%';
+            }, autoPlayDelay);
+        }
+
+        function resetAutoPlay() {
+            clearInterval(autoPlayInterval);
+            clearInterval(progressInterval);
+            progressBar.style.width = '0%';
+            startAutoPlay();
+        }
+
+        // Pause on hover
+        document.getElementById('carousel').addEventListener('mouseenter', () => {
+            clearInterval(autoPlayInterval);
+            clearInterval(progressInterval);
+        });
+
+        document.getElementById('carousel').addEventListener('mouseleave', () => {
+            startAutoPlay();
+        });
+
+        // Touch support
+        let touchStartX = 0;
+        let touchEndX = 0;
+
+        track.addEventListener('touchstart', e => {
+            touchStartX = e.changedTouches[0].screenX;
+        }, { passive: true });
+
+        track.addEventListener('touchend', e => {
+            touchEndX = e.changedTouches[0].screenX;
+            if (touchStartX - touchEndX > 50) nextSlide();
+            if (touchEndX - touchStartX > 50) prevSlide();
+        }, { passive: true });
+
+        // Start auto-play
+        startAutoPlay();
+
+        // ==================== LIGHTBOX ====================
+        let lightboxIndex = 0;
+
+        function openLightbox(index) {
+            lightboxIndex = index;
+            const slide = slides[index];
+            const img = slide.querySelector('img');
+            const title = slide.dataset.title;
+            const desc = slide.dataset.desc;
+
+            document.getElementById('lightbox-img').src = img.src;
+            document.getElementById('lightbox-caption').textContent = `${title} - ${desc}`;
+            document.getElementById('lightbox').classList.add('active');
+            document.body.style.overflow = 'hidden';
+
+            // Pause carousel
+            clearInterval(autoPlayInterval);
+            clearInterval(progressInterval);
+        }
+
+        function closeLightbox() {
+            document.getElementById('lightbox').classList.remove('active');
+            document.body.style.overflow = '';
+            startAutoPlay();
+        }
+
+        function lightboxNext() {
+            event.stopPropagation();
+            lightboxIndex = (lightboxIndex + 1) % slides.length;
+            updateLightboxImage();
+        }
+
+        function lightboxPrev() {
+            event.stopPropagation();
+            lightboxIndex = (lightboxIndex - 1 + slides.length) % slides.length;
+            updateLightboxImage();
+        }
+
+        function updateLightboxImage() {
+            const slide = slides[lightboxIndex];
+            const img = slide.querySelector('img');
+            const title = slide.dataset.title;
+            const desc = slide.dataset.desc;
+
+            document.getElementById('lightbox-img').src = img.src;
+            document.getElementById('lightbox-caption').textContent = `${title} - ${desc}`;
+        }
+
+        // Close lightbox on background click
+        document.getElementById('lightbox').addEventListener('click', function(e) {
+            if (e.target === this || e.target.classList.contains('lightbox-close')) {
+                closeLightbox();
+            }
+        });
+
+        // Keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            const lightbox = document.getElementById('lightbox');
+            if (lightbox.classList.contains('active')) {
+                if (e.key === 'Escape') closeLightbox();
+                if (e.key === 'ArrowRight') lightboxNext();
+                if (e.key === 'ArrowLeft') lightboxPrev();
+            } else {
+                if (e.key === 'ArrowRight') nextSlide();
+                if (e.key === 'ArrowLeft') prevSlide();
+            }
+        });
+    </script>
+</body>
+</html>
