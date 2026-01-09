@@ -111,14 +111,22 @@ public class ReviewService implements ReviewExecutor {
      */
     @Transactional
     public Review submitReview(String prUrl, SessionUserInfo sessionUser) {
-        return submitReview(prUrl, sessionUser, false);
+        return submitReview(prUrl, sessionUser, false, null, null);
     }
 
     /**
      * Submit a PR for review with optimization option
      */
-    @Transactional
     public Review submitReview(String prUrl, SessionUserInfo sessionUser, boolean includeOptimization) {
+        return submitReview(prUrl, sessionUser, includeOptimization, null, null);
+    }
+
+    /**
+     * Submit a PR for review with optimization and ticket scope validation
+     */
+    @Transactional
+    public Review submitReview(String prUrl, SessionUserInfo sessionUser, boolean includeOptimization,
+            String ticketContent, String ticketId) {
         GitProviderFactory.ParsedPrUrl parsed = gitProviderFactory.parsePrUrl(prUrl);
 
         // Fetch PR details from Git provider
@@ -165,6 +173,8 @@ public class ReviewService implements ReviewExecutor {
         review.setRepositoryName(parsed.owner() + "/" + parsed.repo());
         review.setStatus(Review.ReviewStatus.IN_PROGRESS);
         review.setIncludeOptimization(includeOptimization);
+        review.setTicketContent(ticketContent);
+        review.setTicketId(ticketId);
         review.setCreatedAt(LocalDateTime.now());
 
         // Find or create user from session info
@@ -362,7 +372,9 @@ public class ReviewService implements ReviewExecutor {
             : null;
 
         // Execute the review with progress tracking
-        ReviewEngine.ReviewRequest request = new ReviewEngine.ReviewRequest(provider, owner, repo, prNumber, organizationId);
+        ReviewEngine.ReviewRequest request = new ReviewEngine.ReviewRequest(
+            provider, owner, repo, prNumber, organizationId,
+            review.getTicketContent(), review.getTicketId());
         ReviewEngine.ReviewResult result;
         try {
             result = reviewEngine.executeReview(request, progress -> {
@@ -392,6 +404,8 @@ public class ReviewService implements ReviewExecutor {
             .filter(i -> i.getSeverity() == ReviewIssue.Severity.LOW).count());
         review.setInputTokens(result.totalInputTokens());
         review.setOutputTokens(result.totalOutputTokens());
+        review.setTicketScopeResult(result.ticketScopeResult());
+        review.setTicketScopeAligned(result.ticketScopeAligned());
         review.setStatus(Review.ReviewStatus.COMPLETED);
         review.setCompletedAt(LocalDateTime.now());
         reviewRepository.save(review);
@@ -828,6 +842,15 @@ public class ReviewService implements ReviewExecutor {
      */
     @Transactional
     public Review submitCommitReview(String commitUrl, SessionUserInfo sessionUser, boolean includeOptimization) {
+        return submitCommitReview(commitUrl, sessionUser, includeOptimization, null, null);
+    }
+
+    /**
+     * Submit a single commit for review with ticket scope validation
+     */
+    @Transactional
+    public Review submitCommitReview(String commitUrl, SessionUserInfo sessionUser, boolean includeOptimization,
+            String ticketContent, String ticketId) {
         GitProviderFactory.ParsedCommitUrl parsed = gitProviderFactory.parseCommitUrl(commitUrl);
 
         // Fetch commit details from Git provider
@@ -860,6 +883,8 @@ public class ReviewService implements ReviewExecutor {
         review.setRepositoryName(parsed.owner() + "/" + parsed.repo());
         review.setStatus(Review.ReviewStatus.IN_PROGRESS);
         review.setIncludeOptimization(includeOptimization);
+        review.setTicketContent(ticketContent);
+        review.setTicketId(ticketId);
         review.setCreatedAt(LocalDateTime.now());
 
         // Find or create user from session info
@@ -932,7 +957,9 @@ public class ReviewService implements ReviewExecutor {
             : null;
 
         // Execute the commit review with progress tracking
-        ReviewEngine.CommitReviewRequest request = new ReviewEngine.CommitReviewRequest(provider, owner, repo, commitSha, organizationId);
+        ReviewEngine.CommitReviewRequest request = new ReviewEngine.CommitReviewRequest(
+            provider, owner, repo, commitSha, organizationId,
+            review.getTicketContent(), review.getTicketId());
         ReviewEngine.ReviewResult result;
         try {
             result = reviewEngine.executeCommitReview(request, progress -> {
@@ -960,6 +987,8 @@ public class ReviewService implements ReviewExecutor {
             .filter(i -> i.getSeverity() == ReviewIssue.Severity.LOW).count());
         review.setInputTokens(result.totalInputTokens());
         review.setOutputTokens(result.totalOutputTokens());
+        review.setTicketScopeResult(result.ticketScopeResult());
+        review.setTicketScopeAligned(result.ticketScopeAligned());
         review.setStatus(Review.ReviewStatus.COMPLETED);
         review.setCompletedAt(LocalDateTime.now());
         reviewRepository.save(review);

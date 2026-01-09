@@ -1,0 +1,45 @@
+You are validating whether a Pull Request's changes align with its ticket/story requirements.
+
+## Ticket Content:
+{{ticket_content}}
+
+## Ticket ID: {{ticket_id}}
+
+## PR Title: {{pr_title}}
+
+## Changed Files:
+{{files_summary}}
+
+## PR Summary:
+{{pr_summary}}
+
+## Instructions:
+Analyze whether the PR changes align with what the ticket describes. Consider:
+1. Do the modified files make sense for the ticket's requirements?
+2. Are there changes that seem unrelated to the ticket scope?
+3. Are there expected changes missing based on the ticket description?
+
+Respond with JSON only:
+```json
+{
+  "aligned": true,
+  "confidence": "HIGH",
+  "analysis": "Brief 2-3 sentence explanation of alignment assessment",
+  "outOfScopeChanges": [],
+  "missingChanges": []
+}
+```
+
+**Field descriptions:**
+- `aligned`: true if changes generally match ticket scope, false if significant scope issues
+- `confidence`: HIGH (clear alignment/misalignment), MEDIUM (some uncertainty), LOW (insufficient info)
+- `analysis`: Brief explanation of your assessment
+- `outOfScopeChanges`: Array of "filename - reason" for files that don't match ticket scope
+- `missingChanges`: Array of expected changes not found (based on ticket description)
+
+**Guidelines:**
+- Be pragmatic: minor additions (logging, error handling) shouldn't flag as out-of-scope
+- Consider that developers often fix related issues while working on a ticket
+- Only flag significant scope deviations
+- If ticket content is vague, increase confidence to LOW and explain
+- Return empty arrays if no issues found

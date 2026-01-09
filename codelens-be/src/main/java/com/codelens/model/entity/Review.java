@@ -31,6 +31,17 @@ public class Review {
     @Column(columnDefinition = "TEXT")
     private String prDescription;
 
+    // Ticket scope validation
+    @Column(columnDefinition = "TEXT")
+    private String ticketContent;
+
+    private String ticketId;
+
+    @Column(columnDefinition = "TEXT")
+    private String ticketScopeResult;
+
+    private Boolean ticketScopeAligned;
+
     private String prUrl;
 
     // Commit URL for single commit reviews (null for PR reviews)

@@ -4,6 +4,8 @@
 
 	let url = '';
 	let includeOptimization = false;
+	let ticketContent = '';
+	let ticketId = '';
 	let loading = false;
 	let error: string | null = null;
 
@@ -51,10 +53,15 @@
 
 		try {
 			let review;
+			const options = {
+				includeOptimization,
+				ticketContent: ticketContent.trim() || undefined,
+				ticketId: ticketId.trim() || undefined
+			};
 			if (urlType === 'commit') {
-				review = await reviews.submitCommit(url, { includeOptimization });
+				review = await reviews.submitCommit(url, options);
 			} else {
-				review = await reviews.submit(url, { includeOptimization });
+				review = await reviews.submit(url, options);
 			}
 			goto(`/reviews/${review.id}`);
 		} catch (e) {
@@ -113,6 +120,41 @@
 						<li>GitLab Commit: https://gitlab.com/owner/repo/-/commit/abc123</li>
 					</ul>
 				{/if}
+			</div>
+
+			<!-- Ticket Scope Validation -->
+			<div class="mb-6">
+				<label for="ticketContent" class="block text-sm font-medium text-gray-700 mb-2">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline mr-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+					</svg>
+					Ticket/Story Content (optional)
+				</label>
+				<textarea
+					id="ticketContent"
+					bind:value={ticketContent}
+					placeholder="Paste your Jira ticket, GitHub issue, or story description here to validate PR scope alignment..."
+					class="input min-h-[100px] resize-y"
+					disabled={loading}
+					rows="4"
+				></textarea>
+				<p class="mt-1 text-xs text-gray-500">
+					If provided, CodeLens will verify that the PR changes align with the ticket scope.
+				</p>
+			</div>
+
+			<div class="mb-6">
+				<label for="ticketId" class="block text-sm font-medium text-gray-700 mb-2">
+					Ticket ID (optional)
+				</label>
+				<input
+					type="text"
+					id="ticketId"
+					bind:value={ticketId}
+					placeholder="e.g., JIRA-123, #456"
+					class="input"
+					disabled={loading}
+				/>
 			</div>
 
 			<!-- Optimization Analysis Option -->
