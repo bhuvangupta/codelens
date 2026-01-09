@@ -203,11 +203,12 @@ public class ReviewEngine {
         List<ChangedFile> changedFiles = gitProvider.getChangedFiles(request.owner(), request.repo(), request.prNumber());
         log.info("Found {} changed files", changedFiles.size());
 
-        // Calculate total diff lines and enforce limit
+        // Calculate total diff lines for LLM-reviewable files only and enforce limit
         int totalDiffLines = changedFiles.stream()
+            .filter(f -> !shouldSkipLlmReview(f.filename()))
             .mapToInt(f -> f.additions() + f.deletions())
             .sum();
-        log.info("Total diff lines: {} (limit: {})", totalDiffLines, maxDiffLines);
+        log.info("Total LLM-reviewable diff lines: {} (limit: {})", totalDiffLines, maxDiffLines);
 
         if (totalDiffLines > maxDiffLines) {
             // Cleanup is handled by finally block in executeReview()
@@ -331,9 +332,13 @@ public class ReviewEngine {
         // Generate summary
         String summary = generateSummary(prInfo, finalFilesToReview, new ArrayList<>(allIssues));
 
-        // Calculate stats
-        int additions = finalFilesToReview.stream().mapToInt(ChangedFile::additions).sum();
-        int deletions = finalFilesToReview.stream().mapToInt(ChangedFile::deletions).sum();
+        // Calculate stats (only count LLM-reviewed files)
+        int additions = finalFilesToReview.stream()
+            .filter(f -> !shouldSkipLlmReview(f.filename()))
+            .mapToInt(ChangedFile::additions).sum();
+        int deletions = finalFilesToReview.stream()
+            .filter(f -> !shouldSkipLlmReview(f.filename()))
+            .mapToInt(ChangedFile::deletions).sum();
 
         long elapsed = System.currentTimeMillis() - startTime;
         log.info("Review completed in {}ms for {} files with {} issues",
@@ -454,6 +459,16 @@ public class ReviewEngine {
             }
         }
         return false;
+    }
+
+    /**
+     * Check if a file should skip LLM review based on SmartContextExtractor rules.
+     * Used to exclude such files from diff line limits and stats.
+     */
+    private boolean shouldSkipLlmReview(String filename) {
+        SmartContextExtractor.ExtractionResult result =
+            smartContextExtractor.extract(filename, null, null);
+        return result.mode() == SmartContextExtractor.ReviewMode.SKIP_LLM;
     }
 
     private FileReviewResult reviewFile(
@@ -1400,11 +1415,12 @@ public class ReviewEngine {
         List<GitProvider.ChangedFile> changedFiles = gitProvider.getCommitChangedFiles(request.owner(), request.repo(), request.commitSha());
         log.info("Found {} changed files in commit", changedFiles.size());
 
-        // Calculate total diff lines
+        // Calculate total diff lines for LLM-reviewable files only
         int totalDiffLines = changedFiles.stream()
+            .filter(f -> !shouldSkipLlmReview(f.filename()))
             .mapToInt(f -> f.additions() + f.deletions())
             .sum();
-        log.info("Total diff lines: {} (limit: {})", totalDiffLines, maxDiffLines);
+        log.info("Total LLM-reviewable diff lines: {} (limit: {})", totalDiffLines, maxDiffLines);
 
         if (totalDiffLines > maxDiffLines) {
             throw new IllegalArgumentException(String.format(
@@ -1519,8 +1535,13 @@ public class ReviewEngine {
         String summary = generateCommitSummary(commitInfo, finalFilesToReview, new ArrayList<>(allIssues));
 
         // Calculate stats
-        int additions = finalFilesToReview.stream().mapToInt(GitProvider.ChangedFile::additions).sum();
-        int deletions = finalFilesToReview.stream().mapToInt(GitProvider.ChangedFile::deletions).sum();
+        // Only count LLM-reviewed files
+        int additions = finalFilesToReview.stream()
+            .filter(f -> !shouldSkipLlmReview(f.filename()))
+            .mapToInt(GitProvider.ChangedFile::additions).sum();
+        int deletions = finalFilesToReview.stream()
+            .filter(f -> !shouldSkipLlmReview(f.filename()))
+            .mapToInt(GitProvider.ChangedFile::deletions).sum();
 
         long elapsed = System.currentTimeMillis() - startTime;
         log.info("Commit review completed in {}ms for {} files with {} issues",
