@@ -43,6 +43,12 @@ public class CheckstyleAnalyzer implements StaticAnalyzer {
                 <module name="HiddenField">
                     <property name="ignoreConstructorParameter" value="true"/>
                     <property name="ignoreSetter" value="true"/>
+                    <property name="setterCanReturnItsClass" value="true"/>
+                </module>
+                <!-- Suppress HiddenField for with* builder methods -->
+                <module name="SuppressionXpathSingleFilter">
+                    <property name="checks" value="HiddenField"/>
+                    <property name="query" value="//METHOD_DEF[./IDENT[starts-with(@text, 'with')]]/PARAMETERS/PARAMETER_DEF"/>
                 </module>
                 <module name="IllegalCatch"/>
                 <module name="IllegalThrows"/>
