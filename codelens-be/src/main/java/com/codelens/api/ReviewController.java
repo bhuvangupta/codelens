@@ -14,6 +14,7 @@ import com.codelens.repository.ReviewFileDiffRepository;
 import com.codelens.repository.ReviewRepository;
 import com.codelens.repository.UserRepository;
 import com.codelens.security.AuthenticatedUser;
+import com.codelens.service.LearningService;
 import com.codelens.service.OptimizationService;
 import com.codelens.service.ReviewCancellationService;
 import com.codelens.service.ReviewService;
@@ -45,6 +46,7 @@ public class ReviewController {
     private final ReviewCancellationService cancellationService;
     private final UserRepository userRepository;
     private final ReviewFileDiffRepository fileDiffRepository;
+    private final LearningService learningService;
 
     public ReviewController(
             ReviewService reviewService,
@@ -52,13 +54,15 @@ public class ReviewController {
             OptimizationService optimizationService,
             ReviewCancellationService cancellationService,
             UserRepository userRepository,
-            ReviewFileDiffRepository fileDiffRepository) {
+            ReviewFileDiffRepository fileDiffRepository,
+            LearningService learningService) {
         this.reviewService = reviewService;
         this.reviewRepository = reviewRepository;
         this.optimizationService = optimizationService;
         this.cancellationService = cancellationService;
         this.userRepository = userRepository;
         this.fileDiffRepository = fileDiffRepository;
+        this.learningService = learningService;
     }
 
     /**
@@ -81,7 +85,9 @@ public class ReviewController {
         }
 
         boolean includeOptimization = Boolean.TRUE.equals(request.includeOptimization());
-        Review review = reviewService.submitReview(request.prUrl(), sessionUser, includeOptimization);
+        Review review = reviewService.submitReview(
+            request.prUrl(), sessionUser, includeOptimization,
+            request.ticketContent(), request.ticketId());
         return ResponseEntity.status(HttpStatus.ACCEPTED)
             .body(ReviewResponse.from(review));
     }
@@ -106,7 +112,9 @@ public class ReviewController {
         }
 
         boolean includeOptimization = Boolean.TRUE.equals(request.includeOptimization());
-        Review review = reviewService.submitCommitReview(request.commitUrl(), sessionUser, includeOptimization);
+        Review review = reviewService.submitCommitReview(
+            request.commitUrl(), sessionUser, includeOptimization,
+            request.ticketContent(), request.ticketId());
         return ResponseEntity.status(HttpStatus.ACCEPTED)
             .body(ReviewResponse.from(review));
     }
@@ -183,6 +191,53 @@ public class ReviewController {
         List<ReviewIssue> issues = reviewService.getIssuesForReview(id);
         return ResponseEntity.ok(issues.stream().map(ReviewResponse.IssueDto::from).toList());
     }
+
+    /**
+     * Submit feedback for a review issue
+     */
+    @PostMapping("/{reviewId}/issues/{issueId}/feedback")
+    public ResponseEntity<?> submitIssueFeedback(
+            @PathVariable UUID reviewId,
+            @PathVariable UUID issueId,
+            @RequestBody IssueFeedbackRequest request,
+            @AuthenticationPrincipal AuthenticatedUser auth) {
+
+        if (auth == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        Optional<User> user = userRepository.findByEmail(auth.email());
+        if (user.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        // Verify the issue belongs to the specified review
+        Optional<Review> review = reviewService.getReview(reviewId);
+        if (review.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        try {
+            learningService.submitFeedback(
+                    issueId,
+                    new LearningService.FeedbackRequest(
+                            request.isHelpful(),
+                            request.isFalsePositive(),
+                            request.note()
+                    ),
+                    user.get()
+            );
+            return ResponseEntity.ok(Map.of("message", "Feedback submitted successfully"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    public record IssueFeedbackRequest(
+            Boolean isHelpful,
+            Boolean isFalsePositive,
+            String note
+    ) {}
 
     /**
      * Get comments for a review

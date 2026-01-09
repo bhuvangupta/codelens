@@ -332,6 +332,10 @@ public class ReviewEngine {
         // Generate summary
         String summary = generateSummary(prInfo, finalFilesToReview, new ArrayList<>(allIssues));
 
+        // Validate ticket scope if ticket content provided
+        TicketScopeValidation ticketScopeValidation = validateTicketScope(
+            request.ticketContent(), request.ticketId(), prInfo, finalFilesToReview, summary);
+
         // Calculate stats (only count LLM-reviewed files)
         int additions = finalFilesToReview.stream()
             .filter(f -> !shouldSkipLlmReview(f.filename()))
@@ -368,7 +372,9 @@ public class ReviewEngine {
             providerName,
             estimatedCost,
             diff,
-            parsedDiffs
+            parsedDiffs,
+            ticketScopeValidation != null ? ticketScopeValidation.result() : null,
+            ticketScopeValidation != null ? ticketScopeValidation.aligned() : null
         );
     }
 
@@ -801,6 +807,115 @@ public class ReviewEngine {
             log.error("Error generating summary", e);
             return "Review completed with " + issues.size() + " issues found.";
         }
+    }
+
+    /**
+     * Validate ticket scope alignment if ticket content is provided
+     */
+    private TicketScopeValidation validateTicketScope(
+            String ticketContent,
+            String ticketId,
+            PullRequestInfo prInfo,
+            List<ChangedFile> files,
+            String summary) {
+
+        if (ticketContent == null || ticketContent.isBlank()) {
+            return null;
+        }
+
+        log.info("Validating ticket scope for PR #{}", prInfo.number());
+
+        String template = loadPromptTemplate("ticket-scope.txt");
+
+        StringBuilder fileList = new StringBuilder();
+        for (ChangedFile file : files) {
+            fileList.append("- ").append(file.filename())
+                .append(" (").append(file.status()).append(": +")
+                .append(file.additions()).append("/-").append(file.deletions()).append(")\n");
+        }
+
+        String prompt = template
+            .replace("{{ticket_content}}", ticketContent)
+            .replace("{{ticket_id}}", ticketId != null ? ticketId : "Not provided")
+            .replace("{{pr_title}}", prInfo.title())
+            .replace("{{files_summary}}", fileList.toString())
+            .replace("{{pr_summary}}", summary != null ? summary : "");
+
+        try {
+            LlmProvider.LlmResponse response = llmRouter.generate(prompt, "ticket-scope");
+            String json = extractJson(response.content());
+
+            if (json != null && !json.isBlank()) {
+                Map<String, Object> result = objectMapper.readValue(
+                    json, new TypeReference<Map<String, Object>>() {});
+
+                Boolean aligned = (Boolean) result.get("aligned");
+                String analysis = (String) result.get("analysis");
+
+                return new TicketScopeValidation(analysis, aligned);
+            }
+        } catch (Exception e) {
+            log.error("Error validating ticket scope", e);
+        }
+
+        return new TicketScopeValidation("Unable to validate ticket scope", null);
+    }
+
+    /**
+     * Result of ticket scope validation
+     */
+    public record TicketScopeValidation(String result, Boolean aligned) {}
+
+    /**
+     * Validate ticket scope for commit reviews
+     */
+    private TicketScopeValidation validateTicketScopeForCommit(
+            String ticketContent,
+            String ticketId,
+            GitProvider.CommitInfo commitInfo,
+            List<GitProvider.ChangedFile> files,
+            String summary) {
+
+        if (ticketContent == null || ticketContent.isBlank()) {
+            return null;
+        }
+
+        log.info("Validating ticket scope for commit {}", commitInfo.sha());
+
+        String template = loadPromptTemplate("ticket-scope.txt");
+
+        StringBuilder fileList = new StringBuilder();
+        for (GitProvider.ChangedFile file : files) {
+            fileList.append("- ").append(file.filename())
+                .append(" (").append(file.status()).append(": +")
+                .append(file.additions()).append("/-").append(file.deletions()).append(")\n");
+        }
+
+        String prompt = template
+            .replace("{{ticket_content}}", ticketContent)
+            .replace("{{ticket_id}}", ticketId != null ? ticketId : "Not provided")
+            .replace("{{pr_title}}", commitInfo.message().split("\n")[0]) // First line of commit message
+            .replace("{{files_summary}}", fileList.toString())
+            .replace("{{pr_summary}}", summary != null ? summary : "");
+
+        try {
+            LlmProvider.LlmResponse response = llmRouter.generate(prompt, "ticket-scope");
+            String json = extractJson(response.content());
+
+            if (json != null && !json.isBlank()) {
+                Map<String, Object> result = objectMapper.readValue(
+                    json, new TypeReference<Map<String, Object>>() {});
+
+                Boolean aligned = (Boolean) result.get("aligned");
+                String analysis = (String) result.get("analysis");
+
+                return new TicketScopeValidation(analysis, aligned);
+            }
+        } catch (Exception e) {
+            log.error("Error validating ticket scope for commit", e);
+        }
+
+        return new TicketScopeValidation("Unable to validate ticket scope", null);
     }
 
     private void parseReviewResponse(
@@ -1316,7 +1431,9 @@ public class ReviewEngine {
         String owner,
         String repo,
         int prNumber,
-        java.util.UUID organizationId
+        java.util.UUID organizationId,
+        String ticketContent,
+        String ticketId
     ) {
         // Constructor for backwards compatibility
         public ReviewRequest(
@@ -1325,7 +1442,17 @@ public class ReviewEngine {
             String repo,
             int prNumber
         ) {
-            this(gitProvider, owner, repo, prNumber, null);
+            this(gitProvider, owner, repo, prNumber, null, null, null);
+        }
+
+        public ReviewRequest(
+            com.codelens.model.entity.Repository.GitProvider gitProvider,
+            String owner,
+            String repo,
+            int prNumber,
+            java.util.UUID organizationId
+        ) {
+            this(gitProvider, owner, repo, prNumber, organizationId, null, null);
         }
     }
 
@@ -1354,8 +1481,30 @@ public class ReviewEngine {
         String llmProvider,
         double estimatedCost,
         String rawDiff,
-        List<DiffParser.FileDiff> parsedDiffs
-    ) {}
+        List<DiffParser.FileDiff> parsedDiffs,
+        String ticketScopeResult,
+        Boolean ticketScopeAligned
+    ) {
+        // Constructor for backwards compatibility
+        public ReviewResult(
+            String summary,
+            List<ReviewIssue> issues,
+            List<ReviewComment> comments,
+            int filesReviewed,
+            int linesAdded,
+            int linesRemoved,
+            int totalInputTokens,
+            int totalOutputTokens,
+            String llmProvider,
+            double estimatedCost,
+            String rawDiff,
+            List<DiffParser.FileDiff> parsedDiffs
+        ) {
+            this(summary, issues, comments, filesReviewed, linesAdded, linesRemoved,
+                totalInputTokens, totalOutputTokens, llmProvider, estimatedCost,
+                rawDiff, parsedDiffs, null, null);
+        }
+    }
 
     /**
      * Request to review a single commit
@@ -1365,8 +1514,21 @@ public class ReviewEngine {
         String owner,
         String repo,
         String commitSha,
-        java.util.UUID organizationId
-    ) {}
+        java.util.UUID organizationId,
+        String ticketContent,
+        String ticketId
+    ) {
+        // Constructor for backwards compatibility
+        public CommitReviewRequest(
+            com.codelens.model.entity.Repository.GitProvider gitProvider,
+            String owner,
+            String repo,
+            String commitSha,
+            java.util.UUID organizationId
+        ) {
+            this(gitProvider, owner, repo, commitSha, organizationId, null, null);
+        }
+    }
 
     /**
      * Execute a full review for a single commit
@@ -1534,6 +1696,10 @@ public class ReviewEngine {
         // Generate summary
         String summary = generateCommitSummary(commitInfo, finalFilesToReview, new ArrayList<>(allIssues));
 
+        // Validate ticket scope if ticket content provided
+        TicketScopeValidation ticketScopeValidation = validateTicketScopeForCommit(
+            request.ticketContent(), request.ticketId(), commitInfo, finalFilesToReview, summary);
+
         // Calculate stats
         // Only count LLM-reviewed files
         int additions = finalFilesToReview.stream()
@@ -1567,7 +1733,9 @@ public class ReviewEngine {
             providerName,
             estimatedCost,
             diff,
-            parsedDiffs
+            parsedDiffs,
+            ticketScopeValidation != null ? ticketScopeValidation.result() : null,
+            ticketScopeValidation != null ? ticketScopeValidation.aligned() : null
         );
     }
 

@@ -17,6 +17,9 @@
 	// Tab state for issue categories
 	let activeIssueTab: 'all' | 'security' | 'bugs' | 'quality' | 'optimizations' = 'all';
 
+	// Feedback state
+	let feedbackSubmitting: Record<string, boolean> = {};
+
 	// Optimization state
 	let optimizationStatus: OptimizationStatus | null = null;
 	let optimizationLoading = false;
@@ -262,6 +265,32 @@
 			hour: '2-digit',
 			minute: '2-digit'
 		});
+	}
+
+	async function submitFeedback(issueId: string, isHelpful: boolean, isFalsePositive: boolean) {
+		if (!reviewId || feedbackSubmitting[issueId]) return;
+
+		feedbackSubmitting[issueId] = true;
+		feedbackSubmitting = feedbackSubmitting; // Trigger reactivity
+
+		try {
+			await reviews.submitIssueFeedback(reviewId, issueId, { isHelpful, isFalsePositive });
+			// Update the local issue state
+			if (review?.issues) {
+				const issue = review.issues.find(i => i.id === issueId);
+				if (issue) {
+					issue.isHelpful = isHelpful;
+					issue.isFalsePositive = isFalsePositive;
+					issue.feedbackAt = new Date().toISOString();
+					review = review; // Trigger reactivity
+				}
+			}
+		} catch (e) {
+			console.error('Failed to submit feedback:', e);
+		} finally {
+			feedbackSubmitting[issueId] = false;
+			feedbackSubmitting = feedbackSubmitting; // Trigger reactivity
+		}
 	}
 
 	function getStatusBadge(status: string): { class: string; dot: string } {
@@ -636,6 +665,47 @@
 			</div>
 		{/if}
 
+		<!-- Ticket Scope Validation -->
+		{#if review.ticketContent}
+			<div class="bg-white rounded-xl border border-slate-200 p-6 mb-6">
+				<div class="flex items-start gap-4">
+					<div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-500/25">
+						<i class="fas fa-clipboard-check text-white text-lg"></i>
+					</div>
+					<div class="flex-1">
+						<div class="flex items-center gap-3 mb-3">
+							<h3 class="text-lg font-semibold text-slate-800">Ticket Scope Validation</h3>
+							{#if review.ticketScopeAligned === true}
+								<span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700 flex items-center gap-1">
+									<i class="fas fa-check text-xs"></i> Aligned
+								</span>
+							{:else if review.ticketScopeAligned === false}
+								<span class="px-2 py-1 text-xs rounded-full bg-amber-100 text-amber-700 flex items-center gap-1">
+									<i class="fas fa-exclamation-triangle text-xs"></i> Scope Concerns
+								</span>
+							{:else}
+								<span class="px-2 py-1 text-xs rounded-full bg-slate-100 text-slate-600">
+									Analyzing...
+								</span>
+							{/if}
+						</div>
+
+						{#if review.ticketId}
+							<p class="text-sm text-slate-600 mb-2">
+								<span class="font-medium">Ticket:</span> {review.ticketId}
+							</p>
+						{/if}
+
+						{#if review.ticketScopeResult}
+							<div class="text-slate-600 text-sm leading-relaxed">
+								{review.ticketScopeResult}
+							</div>
+						{/if}
+					</div>
+				</div>
+			</div>
+		{/if}
+
 		<!-- Main View Tabs -->
 		<div class="flex gap-2 mb-6">
 			<button
@@ -838,6 +908,41 @@
 									{/if}
 									</div>
 								{/if}
+
+								<!-- Feedback buttons -->
+								<div class="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100">
+									<span class="text-xs text-slate-500 mr-1">Was this helpful?</span>
+									<button
+										class="px-2.5 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 {issue.isHelpful === true ? 'bg-green-100 text-green-700 ring-1 ring-green-200' : 'bg-slate-100 text-slate-600 hover:bg-green-50 hover:text-green-700'}"
+										on:click={() => submitFeedback(issue.id, true, false)}
+										disabled={feedbackSubmitting[issue.id]}
+									>
+										{#if feedbackSubmitting[issue.id]}
+											<div class="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
+										{:else}
+											<i class="fas fa-thumbs-up"></i>
+										{/if}
+										Helpful
+									</button>
+									<button
+										class="px-2.5 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 {issue.isFalsePositive === true ? 'bg-red-100 text-red-700 ring-1 ring-red-200' : 'bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-700'}"
+										on:click={() => submitFeedback(issue.id, false, true)}
+										disabled={feedbackSubmitting[issue.id]}
+									>
+										{#if feedbackSubmitting[issue.id]}
+											<div class="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
+										{:else}
+											<i class="fas fa-flag"></i>
+										{/if}
+										False Positive
+									</button>
+									{#if issue.feedbackAt}
+										<span class="text-xs text-slate-400 ml-auto">
+											<i class="fas fa-check-circle text-green-500 mr-1"></i>
+											Feedback submitted
+										</span>
+									{/if}
+								</div>
 							</div>
 						</div>
 					</div>

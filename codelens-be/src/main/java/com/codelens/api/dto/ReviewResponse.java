@@ -33,6 +33,11 @@ public record ReviewResponse(
     Double estimatedCost,
     LocalDateTime createdAt,
     LocalDateTime completedAt,
+    // Ticket scope validation
+    String ticketContent,
+    String ticketId,
+    String ticketScopeResult,
+    Boolean ticketScopeAligned,
     List<IssueDto> issues,
     List<CommentDto> comments
 ) {
@@ -62,6 +67,10 @@ public record ReviewResponse(
             review.getEstimatedCost(),
             review.getCreatedAt(),
             review.getCompletedAt(),
+            review.getTicketContent(),
+            review.getTicketId(),
+            review.getTicketScopeResult(),
+            review.getTicketScopeAligned(),
             null,
             null
         );
@@ -93,6 +102,10 @@ public record ReviewResponse(
             review.getEstimatedCost(),
             review.getCreatedAt(),
             review.getCompletedAt(),
+            review.getTicketContent(),
+            review.getTicketId(),
+            review.getTicketScopeResult(),
+            review.getTicketScopeAligned(),
             issues != null ? issues.stream().map(IssueDto::from).toList() : null,
             comments != null ? comments.stream().map(CommentDto::from).toList() : null
         );
@@ -108,7 +121,11 @@ public record ReviewResponse(
         String suggestion,
         String source,
         String cveId,
-        Double cvssScore
+        Double cvssScore,
+        // Feedback fields
+        Boolean isHelpful,
+        Boolean isFalsePositive,
+        LocalDateTime feedbackAt
     ) {
         public static IssueDto from(ReviewIssue issue) {
             return new IssueDto(
@@ -121,7 +138,10 @@ public record ReviewResponse(
                 issue.getSuggestion(),
                 issue.getSource() != null ? issue.getSource().name() : null,
                 issue.getCveId(),
-                issue.getCvssScore()
+                issue.getCvssScore(),
+                issue.getIsHelpful(),
+                issue.getIsFalsePositive(),
+                issue.getFeedbackAt()
             );
         }
     }

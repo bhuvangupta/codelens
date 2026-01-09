@@ -108,11 +108,27 @@ async function request<T>(endpoint: string, options: ApiOptions = {}): Promise<T
 
 // Reviews API
 export const reviews = {
-	submit: (prUrl: string, options?: { includeOptimization?: boolean }) =>
-		request<Review>('/reviews', { method: 'POST', body: { prUrl, includeOptimization: options?.includeOptimization } }),
+	submit: (prUrl: string, options?: { includeOptimization?: boolean; ticketContent?: string; ticketId?: string }) =>
+		request<Review>('/reviews', {
+			method: 'POST',
+			body: {
+				prUrl,
+				includeOptimization: options?.includeOptimization,
+				ticketContent: options?.ticketContent,
+				ticketId: options?.ticketId
+			}
+		}),
 
-	submitCommit: (commitUrl: string, options?: { includeOptimization?: boolean }) =>
-		request<Review>('/reviews/commit', { method: 'POST', body: { commitUrl, includeOptimization: options?.includeOptimization } }),
+	submitCommit: (commitUrl: string, options?: { includeOptimization?: boolean; ticketContent?: string; ticketId?: string }) =>
+		request<Review>('/reviews/commit', {
+			method: 'POST',
+			body: {
+				commitUrl,
+				includeOptimization: options?.includeOptimization,
+				ticketContent: options?.ticketContent,
+				ticketId: options?.ticketId
+			}
+		}),
 
 	get: (id: string) => request<ReviewDetail>(`/reviews/${id}`),
 
@@ -142,7 +158,13 @@ export const reviews = {
 	cancel: (id: string, reason?: string) =>
 		request<CancelResponse>(`/reviews/${id}/cancel`, { method: 'POST', body: { reason } }),
 
-	getDiff: (id: string) => request<DiffResponse>(`/reviews/${id}/diff`)
+	getDiff: (id: string) => request<DiffResponse>(`/reviews/${id}/diff`),
+
+	submitIssueFeedback: (reviewId: string, issueId: string, feedback: IssueFeedback) =>
+		request<{ message: string }>(`/reviews/${reviewId}/issues/${issueId}/feedback`, {
+			method: 'POST',
+			body: feedback
+		})
 };
 
 // Analytics API
@@ -262,6 +284,11 @@ export interface Review {
 	completedAt: string | null;
 	cancelledAt?: string | null;
 	cancellationReason?: string | null;
+	// Ticket scope validation
+	ticketContent?: string | null;
+	ticketId?: string | null;
+	ticketScopeResult?: string | null;
+	ticketScopeAligned?: boolean | null;
 }
 
 export interface CancelResponse {
@@ -299,6 +326,16 @@ export interface ReviewIssue {
 	cveId: string | null;
 	cvssScore: number | null;
 	aiExplanation?: string | null;
+	// Feedback fields
+	isHelpful?: boolean | null;
+	isFalsePositive?: boolean | null;
+	feedbackAt?: string | null;
+}
+
+export interface IssueFeedback {
+	isHelpful?: boolean;
+	isFalsePositive?: boolean;
+	note?: string;
 }
 
 export interface OptimizationResult {

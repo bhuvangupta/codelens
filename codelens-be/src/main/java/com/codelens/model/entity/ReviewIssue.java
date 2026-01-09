@@ -63,6 +63,19 @@ public class ReviewIssue {
     @Column(columnDefinition = "TEXT")
     private String suggestedFix;
 
+    // Feedback fields for continuous learning
+    private Boolean isHelpful;
+    private Boolean isFalsePositive;
+
+    @Column(columnDefinition = "TEXT")
+    private String feedbackNote;
+
+    private LocalDateTime feedbackAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "feedback_by")
+    private User feedbackBy;
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 
