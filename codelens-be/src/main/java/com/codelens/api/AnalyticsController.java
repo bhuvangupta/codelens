@@ -651,6 +651,23 @@ public class AnalyticsController {
     }
 
     /**
+     * Get PR size distribution for a specific developer.
+     */
+    @GetMapping("/developers/{userId}/pr-sizes")
+    public ResponseEntity<List<DeveloperAnalyticsService.SizeDistribution>> getDeveloperPrSizeDistribution(
+            @PathVariable UUID userId,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days) {
+        try {
+            List<DeveloperAnalyticsService.SizeDistribution> distribution =
+                    developerAnalyticsService.getPrSizeDistributionByUser(userId, days);
+            return ResponseEntity.ok(distribution);
+        } catch (DataAccessException e) {
+            log.error("Database error fetching PR size distribution for {}", userId, e);
+            return ResponseEntity.ok(List.of());
+        }
+    }
+
+    /**
      * Get review cycle time trend.
      */
     @GetMapping("/developers/cycle-time")

@@ -19,7 +19,7 @@
 		{ href: '/reviews', label: 'Reviews', icon: 'code-review', adminOnly: false },
 		{ href: '/reviews/new', label: 'Submit PR', icon: 'paper-plane', adminOnly: false },
 		{ href: '/analytics', label: 'Analytics', icon: 'chart', adminOnly: false },
-		{ href: '/analytics/developers', label: 'Developers', icon: 'users', adminOnly: false },
+		{ href: '/analytics/developers', label: 'Developer Pulse', icon: 'users', adminOnly: false },
 		{ href: '/settings', label: 'Settings', icon: 'cog', adminOnly: true }
 	];
 
