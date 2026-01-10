@@ -17,6 +17,8 @@ CodeLens combines multiple LLM providers with static analysis to provide compreh
 - **Cost Tracking**: Monitor LLM usage and costs
 - **Custom Rules**: Add project-specific review rules via `.codelens/review-rules.md`
 - **Config Auto-Detection**: Automatically uses your `.eslintrc`, `pom.xml`, etc.
+- **Ticket Scope Validation**: Paste ticket/story content to verify PR changes align with requirements
+- **Continuous Learning**: Mark issues as helpful or false positive - CodeLens learns and auto-suppresses noisy rules per repository
 
 ## Screenshots
 
