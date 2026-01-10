@@ -12,6 +12,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -22,6 +23,16 @@ public class DeveloperAnalyticsService {
     private final ReviewRepository reviewRepository;
     private final ReviewIssueRepository issueRepository;
     private final LlmRouter llmRouter;
+
+    // Cache for weekly summaries (key: "userId:days", value: CachedSummary)
+    private final Map<String, CachedSummary> summaryCache = new ConcurrentHashMap<>();
+    private static final long CACHE_TTL_HOURS = 24;
+
+    private record CachedSummary(WeeklySummary summary, LocalDateTime cachedAt) {
+        boolean isExpired() {
+            return LocalDateTime.now().isAfter(cachedAt.plusHours(CACHE_TTL_HOURS));
+        }
+    }
 
     /**
      * Get developer leaderboard with review statistics.
@@ -194,8 +205,17 @@ public class DeveloperAnalyticsService {
 
     /**
      * Generate an AI-powered weekly summary for a developer.
+     * Results are cached for 24 hours to avoid repeated LLM calls.
      */
     public WeeklySummary generateWeeklySummary(UUID userId, String userName, int days) {
+        // Check cache first
+        String cacheKey = userId.toString() + ":" + days;
+        CachedSummary cached = summaryCache.get(cacheKey);
+        if (cached != null && !cached.isExpired()) {
+            log.debug("Returning cached weekly summary for user {}", userId);
+            return cached.summary();
+        }
+
         LocalDateTime since = LocalDateTime.now().minusDays(days);
         LocalDate endDate = LocalDate.now();
         LocalDate startDate = endDate.minusDays(days);
@@ -207,9 +227,9 @@ public class DeveloperAnalyticsService {
         List<Object[]> issueCategories = reviewRepository.getIssueCategoriesForUser(userId, since);
         List<Object[]> topRepos = reviewRepository.getTopRepositoriesForUser(userId, since, 5);
 
-        // If no reviews, return empty summary
+        // If no reviews, return empty summary (also cached)
         if (reviews.isEmpty()) {
-            return new WeeklySummary(
+            WeeklySummary emptySummary = new WeeklySummary(
                     userName,
                     startDate.format(dateFormatter) + " - " + endDate.format(dateFormatter),
                     "No code reviews completed during this period.",
@@ -217,6 +237,8 @@ public class DeveloperAnalyticsService {
                     List.of(),
                     null
             );
+            summaryCache.put(cacheKey, new CachedSummary(emptySummary, LocalDateTime.now()));
+            return emptySummary;
         }
 
         // Build data for prompt
@@ -270,7 +292,18 @@ public class DeveloperAnalyticsService {
                 .map(e -> new CategoryBreakdown(e.getKey(), e.getValue()))
                 .toList();
 
-        return new WeeklySummary(userName, periodString, aiSummary, highlights, categories, repositories.isEmpty() ? null : repositories.get(0));
+        WeeklySummary summary = new WeeklySummary(userName, periodString, aiSummary, highlights, categories, repositories.isEmpty() ? null : repositories.get(0));
+
+        // Cache the result
+        summaryCache.put(cacheKey, new CachedSummary(summary, LocalDateTime.now()));
+        log.debug("Cached weekly summary for user {} (cache size: {})", userId, summaryCache.size());
+
+        // Clean up expired entries periodically (simple cleanup)
+        if (summaryCache.size() > 100) {
+            summaryCache.entrySet().removeIf(entry -> entry.getValue().isExpired());
+        }
+
+        return summary;
     }
 
     private String buildWeeklySummaryPrompt(String userName, String period, DeveloperStats stats,
