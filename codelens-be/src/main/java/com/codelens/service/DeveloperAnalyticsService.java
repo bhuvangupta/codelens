@@ -37,9 +37,15 @@ public class DeveloperAnalyticsService {
     /**
      * Get developer leaderboard with review statistics.
      */
-    public List<DeveloperStats> getLeaderboard(int days, int limit) {
+    public List<DeveloperStats> getLeaderboard(int days, int limit, UUID organizationId) {
         LocalDateTime since = LocalDateTime.now().minusDays(days);
-        List<Object[]> results = reviewRepository.getDeveloperLeaderboard(since, limit);
+        List<Object[]> results;
+
+        if (organizationId != null) {
+            results = reviewRepository.getDeveloperLeaderboardByOrganization(organizationId, since, limit);
+        } else {
+            results = reviewRepository.getDeveloperLeaderboard(since, limit);
+        }
 
         List<DeveloperStats> leaderboard = new ArrayList<>();
         int rank = 1;
@@ -129,9 +135,15 @@ public class DeveloperAnalyticsService {
     /**
      * Get PR size distribution.
      */
-    public List<SizeDistribution> getPrSizeDistribution(int days) {
+    public List<SizeDistribution> getPrSizeDistribution(int days, UUID organizationId) {
         LocalDateTime since = LocalDateTime.now().minusDays(days);
-        List<Object[]> results = reviewRepository.getPrSizeDistribution(since);
+        List<Object[]> results;
+
+        if (organizationId != null) {
+            results = reviewRepository.getPrSizeDistributionByOrganization(organizationId, since);
+        } else {
+            results = reviewRepository.getPrSizeDistribution(since);
+        }
 
         return results.stream()
                 .map(row -> new SizeDistribution(
@@ -174,9 +186,15 @@ public class DeveloperAnalyticsService {
     /**
      * Get summary stats for all developers.
      */
-    public SummaryStats getSummaryStats(int days) {
+    public SummaryStats getSummaryStats(int days, UUID organizationId) {
         LocalDateTime since = LocalDateTime.now().minusDays(days);
-        List<Object[]> results = reviewRepository.getDeveloperSummaryStats(since);
+        List<Object[]> results;
+
+        if (organizationId != null) {
+            results = reviewRepository.getDeveloperSummaryStatsByOrganization(organizationId, since);
+        } else {
+            results = reviewRepository.getDeveloperSummaryStats(since);
+        }
 
         if (results == null || results.isEmpty() || results.get(0)[0] == null) {
             return new SummaryStats(0L, 0L, 0L, 0L, 0.0);

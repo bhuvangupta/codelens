@@ -18,6 +18,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import com.codelens.model.entity.User;
+
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -60,66 +62,99 @@ public class AnalyticsController {
      */
     @GetMapping("/dashboard")
     public ResponseEntity<Map<String, Object>> getDashboardStats(
-            @RequestParam(required = false) UUID organizationId) {
+            @AuthenticationPrincipal AuthenticatedUser auth) {
 
         Map<String, Object> stats = new HashMap<>();
+        UUID orgId = getOrganizationId(auth);
 
         LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
         LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
 
-        // Total reviews
-        long totalReviews = reviewRepository.count();
+        // Total reviews (org-filtered if user has org)
+        long totalReviews;
+        long completedReviews;
+        long completedThisWeek;
+        long reviewsThisWeek;
+        long pendingReviews;
+        long inProgressReviews;
+
+        if (orgId != null) {
+            totalReviews = reviewRepository.countByOrganization(orgId);
+            completedReviews = reviewRepository.countByOrganizationAndStatus(orgId,
+                com.codelens.model.entity.Review.ReviewStatus.COMPLETED);
+            completedThisWeek = reviewRepository.countByOrganizationAndStatusAndCreatedAtAfter(orgId,
+                com.codelens.model.entity.Review.ReviewStatus.COMPLETED, sevenDaysAgo);
+            reviewsThisWeek = reviewRepository.countByOrganizationAndCreatedAtAfter(orgId, sevenDaysAgo);
+            pendingReviews = reviewRepository.countByOrganizationAndStatus(orgId,
+                com.codelens.model.entity.Review.ReviewStatus.PENDING);
+            inProgressReviews = reviewRepository.countByOrganizationAndStatus(orgId,
+                com.codelens.model.entity.Review.ReviewStatus.IN_PROGRESS);
+        } else {
+            totalReviews = reviewRepository.count();
+            completedReviews = reviewRepository.countByStatus(
+                com.codelens.model.entity.Review.ReviewStatus.COMPLETED);
+            completedThisWeek = reviewRepository.countByStatusAndCreatedAtAfter(
+                com.codelens.model.entity.Review.ReviewStatus.COMPLETED, sevenDaysAgo);
+            reviewsThisWeek = reviewRepository.countByCreatedAtAfter(sevenDaysAgo);
+            pendingReviews = reviewRepository.countByStatus(
+                com.codelens.model.entity.Review.ReviewStatus.PENDING);
+            inProgressReviews = reviewRepository.countByStatus(
+                com.codelens.model.entity.Review.ReviewStatus.IN_PROGRESS);
+        }
+
         stats.put("totalReviews", totalReviews);
-
-        // Completed reviews
-        long completedReviews = reviewRepository.countByStatus(
-            com.codelens.model.entity.Review.ReviewStatus.COMPLETED);
         stats.put("completedReviews", completedReviews);
-
-        // Completed reviews this week
-        long completedThisWeek = reviewRepository.countByStatusAndCreatedAtAfter(
-            com.codelens.model.entity.Review.ReviewStatus.COMPLETED, sevenDaysAgo);
         stats.put("completedThisWeek", completedThisWeek);
-
-        // Reviews this week (all statuses)
-        long reviewsThisWeek = reviewRepository.countByCreatedAtAfter(sevenDaysAgo);
         stats.put("reviewsThisWeek", reviewsThisWeek);
-
-        // Pending reviews
-        long pendingReviews = reviewRepository.countByStatus(
-            com.codelens.model.entity.Review.ReviewStatus.PENDING);
         stats.put("pendingReviews", pendingReviews);
-
-        // In progress reviews
-        long inProgressReviews = reviewRepository.countByStatus(
-            com.codelens.model.entity.Review.ReviewStatus.IN_PROGRESS);
         stats.put("inProgressReviews", inProgressReviews);
 
         // Estimated time saved (rough estimate: 15 minutes per review)
         int timeSavedHours = (int) (totalReviews * 15 / 60);
         stats.put("timeSavedHours", timeSavedHours);
 
-        // Total issues found
-        long totalIssues = issueRepository.count();
-        stats.put("totalIssues", totalIssues);
-
-        // Issues by severity
+        // Total issues found (org-filtered if user has org)
+        long totalIssues;
         Map<String, Long> issuesBySeverity = new HashMap<>();
-        issuesBySeverity.put("critical", issueRepository.countBySeverity(
-            com.codelens.model.entity.ReviewIssue.Severity.CRITICAL));
-        issuesBySeverity.put("high", issueRepository.countBySeverity(
-            com.codelens.model.entity.ReviewIssue.Severity.HIGH));
-        issuesBySeverity.put("medium", issueRepository.countBySeverity(
-            com.codelens.model.entity.ReviewIssue.Severity.MEDIUM));
-        issuesBySeverity.put("low", issueRepository.countBySeverity(
-            com.codelens.model.entity.ReviewIssue.Severity.LOW));
+
+        if (orgId != null) {
+            totalIssues = issueRepository.countByOrganization(orgId);
+            issuesBySeverity.put("critical", issueRepository.countByOrganizationAndSeverity(orgId,
+                com.codelens.model.entity.ReviewIssue.Severity.CRITICAL));
+            issuesBySeverity.put("high", issueRepository.countByOrganizationAndSeverity(orgId,
+                com.codelens.model.entity.ReviewIssue.Severity.HIGH));
+            issuesBySeverity.put("medium", issueRepository.countByOrganizationAndSeverity(orgId,
+                com.codelens.model.entity.ReviewIssue.Severity.MEDIUM));
+            issuesBySeverity.put("low", issueRepository.countByOrganizationAndSeverity(orgId,
+                com.codelens.model.entity.ReviewIssue.Severity.LOW));
+        } else {
+            totalIssues = issueRepository.count();
+            issuesBySeverity.put("critical", issueRepository.countBySeverity(
+                com.codelens.model.entity.ReviewIssue.Severity.CRITICAL));
+            issuesBySeverity.put("high", issueRepository.countBySeverity(
+                com.codelens.model.entity.ReviewIssue.Severity.HIGH));
+            issuesBySeverity.put("medium", issueRepository.countBySeverity(
+                com.codelens.model.entity.ReviewIssue.Severity.MEDIUM));
+            issuesBySeverity.put("low", issueRepository.countBySeverity(
+                com.codelens.model.entity.ReviewIssue.Severity.LOW));
+        }
+
+        stats.put("totalIssues", totalIssues);
         stats.put("issuesBySeverity", issuesBySeverity);
 
-        // LLM usage stats
-        Double totalCost = llmUsageRepository.sumEstimatedCostByCreatedAtAfter(thirtyDaysAgo);
-        stats.put("llmCostThisMonth", totalCost != null ? totalCost : 0.0);
+        // LLM usage stats (org-filtered if user has org)
+        Double totalCost;
+        Integer totalTokens;
 
-        Integer totalTokens = llmUsageRepository.sumTotalTokensByCreatedAtAfter(thirtyDaysAgo);
+        if (orgId != null) {
+            totalCost = llmUsageRepository.sumEstimatedCostByOrganizationAndCreatedAtAfter(orgId, thirtyDaysAgo);
+            totalTokens = llmUsageRepository.sumTotalTokensByOrganizationAndCreatedAtAfter(orgId, thirtyDaysAgo);
+        } else {
+            totalCost = llmUsageRepository.sumEstimatedCostByCreatedAtAfter(thirtyDaysAgo);
+            totalTokens = llmUsageRepository.sumTotalTokensByCreatedAtAfter(thirtyDaysAgo);
+        }
+
+        stats.put("llmCostThisMonth", totalCost != null ? totalCost : 0.0);
         stats.put("tokensThisMonth", totalTokens != null ? totalTokens : 0);
 
         return ResponseEntity.ok(stats);
@@ -130,14 +165,21 @@ public class AnalyticsController {
      */
     @GetMapping("/trends")
     public ResponseEntity<Map<String, Object>> getReviewTrends(
+            @AuthenticationPrincipal AuthenticatedUser auth,
             @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days) {
 
         LocalDateTime startDate = LocalDateTime.now().minusDays(days);
+        UUID orgId = getOrganizationId(auth);
 
         Map<String, Object> trends = new HashMap<>();
 
-        // Daily review counts
-        List<Object[]> dailyCounts = reviewRepository.countByDayAfter(startDate);
+        // Daily review counts (org-filtered if user has org)
+        List<Object[]> dailyCounts;
+        if (orgId != null) {
+            dailyCounts = reviewRepository.countByDayAfterByOrganization(orgId, startDate);
+        } else {
+            dailyCounts = reviewRepository.countByDayAfter(startDate);
+        }
 
         // Convert to map for easy lookup
         Map<String, Long> countsByDate = new HashMap<>();
@@ -163,8 +205,14 @@ public class AnalyticsController {
 
         trends.put("dailyReviews", dailyReviews);
 
-        // Issue discovery rate - same treatment
-        List<Object[]> dailyIssuesRaw = issueRepository.countByDayAfter(startDate);
+        // Issue discovery rate - same treatment (org-filtered if user has org)
+        List<Object[]> dailyIssuesRaw;
+        if (orgId != null) {
+            dailyIssuesRaw = issueRepository.countByDayAfterByOrganization(orgId, startDate);
+        } else {
+            dailyIssuesRaw = issueRepository.countByDayAfter(startDate);
+        }
+
         Map<String, Long> issuesByDate = new HashMap<>();
         for (Object[] row : dailyIssuesRaw) {
             if (row[0] != null) {
@@ -193,15 +241,30 @@ public class AnalyticsController {
      */
     @GetMapping("/llm-usage")
     public ResponseEntity<Map<String, Object>> getLlmUsage(
+            @AuthenticationPrincipal AuthenticatedUser auth,
             @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days) {
 
         try {
             LocalDateTime startDate = LocalDateTime.now().minusDays(days);
+            UUID orgId = getOrganizationId(auth);
 
             Map<String, Object> usage = new HashMap<>();
 
-            // Usage by provider
-            List<Object[]> byProvider = llmUsageRepository.sumCostByProviderAfter(startDate);
+            // Usage by provider (org-filtered if user has org)
+            List<Object[]> byProvider;
+            Integer totalInput;
+            Integer totalOutput;
+
+            if (orgId != null) {
+                byProvider = llmUsageRepository.sumCostByProviderAndOrganizationAfter(orgId, startDate);
+                totalInput = llmUsageRepository.sumInputTokensByOrganizationAndCreatedAtAfter(orgId, startDate);
+                totalOutput = llmUsageRepository.sumOutputTokensByOrganizationAndCreatedAtAfter(orgId, startDate);
+            } else {
+                byProvider = llmUsageRepository.sumCostByProviderAfter(startDate);
+                totalInput = llmUsageRepository.sumInputTokensByCreatedAtAfter(startDate);
+                totalOutput = llmUsageRepository.sumOutputTokensByCreatedAtAfter(startDate);
+            }
+
             Map<String, Double> providerCosts = new HashMap<>();
             if (byProvider != null) {
                 for (Object[] row : byProvider) {
@@ -214,9 +277,6 @@ public class AnalyticsController {
             }
             usage.put("costByProvider", providerCosts);
 
-            // Total tokens
-            Integer totalInput = llmUsageRepository.sumInputTokensByCreatedAtAfter(startDate);
-            Integer totalOutput = llmUsageRepository.sumOutputTokensByCreatedAtAfter(startDate);
             usage.put("totalInputTokens", totalInput != null ? totalInput : 0);
             usage.put("totalOutputTokens", totalOutput != null ? totalOutput : 0);
 
@@ -237,15 +297,30 @@ public class AnalyticsController {
      */
     @GetMapping("/issues")
     public ResponseEntity<Map<String, Object>> getIssueAnalytics(
+            @AuthenticationPrincipal AuthenticatedUser auth,
             @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days) {
 
         try {
             LocalDateTime startDate = LocalDateTime.now().minusDays(days);
+            UUID orgId = getOrganizationId(auth);
 
             Map<String, Object> analytics = new HashMap<>();
 
-            // Issues by source (AI vs Static)
-            List<Object[]> bySource = issueRepository.countBySourceAfter(startDate);
+            // Issues by source (AI vs Static) - org-filtered if user has org
+            List<Object[]> bySource;
+            List<Object[]> byCategory;
+            long cveCount;
+
+            if (orgId != null) {
+                bySource = issueRepository.countBySourceAfterByOrganization(orgId, startDate);
+                byCategory = issueRepository.countByCategoryAfterByOrganization(orgId, startDate);
+                cveCount = issueRepository.countByCveIdNotNullByOrganization(orgId);
+            } else {
+                bySource = issueRepository.countBySourceAfter(startDate);
+                byCategory = issueRepository.countByCategoryAfter(startDate);
+                cveCount = issueRepository.countByCveIdNotNull();
+            }
+
             Map<String, Long> sourceCounts = new HashMap<>();
             if (bySource != null) {
                 for (Object[] row : bySource) {
@@ -259,7 +334,6 @@ public class AnalyticsController {
             analytics.put("bySource", sourceCounts);
 
             // Issues by category
-            List<Object[]> byCategory = issueRepository.countByCategoryAfter(startDate);
             Map<String, Long> categoryCounts = new HashMap<>();
             if (byCategory != null) {
                 for (Object[] row : byCategory) {
@@ -273,7 +347,6 @@ public class AnalyticsController {
             analytics.put("byCategory", categoryCounts);
 
             // CVE count
-            long cveCount = issueRepository.countByCveIdNotNull();
             analytics.put("cveCount", cveCount);
 
             return ResponseEntity.ok(analytics);
@@ -292,13 +365,27 @@ public class AnalyticsController {
      * Get sidebar quick stats
      */
     @GetMapping("/sidebar-stats")
-    public ResponseEntity<Map<String, Object>> getSidebarStats() {
+    public ResponseEntity<Map<String, Object>> getSidebarStats(
+            @AuthenticationPrincipal AuthenticatedUser auth) {
         Map<String, Object> stats = new HashMap<>();
+        UUID orgId = getOrganizationId(auth);
 
         LocalDateTime startOfToday = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
 
-        // Reviews today
-        long reviewsToday = reviewRepository.countByCreatedAtAfter(startOfToday);
+        // Reviews today (org-filtered if user has org)
+        long reviewsToday;
+        long pendingCount;
+
+        if (orgId != null) {
+            reviewsToday = reviewRepository.countByOrganizationAndCreatedAtAfter(orgId, startOfToday);
+            pendingCount = reviewRepository.countByOrganizationAndStatus(orgId,
+                com.codelens.model.entity.Review.ReviewStatus.PENDING);
+        } else {
+            reviewsToday = reviewRepository.countByCreatedAtAfter(startOfToday);
+            pendingCount = reviewRepository.countByStatus(
+                com.codelens.model.entity.Review.ReviewStatus.PENDING);
+        }
+
         stats.put("reviewsToday", reviewsToday);
 
         // Daily goal (configurable, default 16)
@@ -310,8 +397,6 @@ public class AnalyticsController {
         stats.put("progressPercent", progress);
 
         // Pending reviews count (for badge)
-        long pendingCount = reviewRepository.countByStatus(
-            com.codelens.model.entity.Review.ReviewStatus.PENDING);
         stats.put("pendingCount", pendingCount);
 
         return ResponseEntity.ok(stats);
@@ -322,9 +407,18 @@ public class AnalyticsController {
      */
     @GetMapping("/activity")
     public ResponseEntity<List<Map<String, Object>>> getRecentActivity(
+            @AuthenticationPrincipal AuthenticatedUser auth,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit) {
 
-        List<com.codelens.model.entity.Review> recentReviews = reviewRepository.findTop10ByOrderByCreatedAtDesc();
+        UUID orgId = getOrganizationId(auth);
+        List<com.codelens.model.entity.Review> recentReviews;
+
+        if (orgId != null) {
+            recentReviews = reviewRepository.findTop10ByOrganizationOrderByCreatedAtDesc(
+                orgId, org.springframework.data.domain.PageRequest.of(0, limit));
+        } else {
+            recentReviews = reviewRepository.findTop10ByOrderByCreatedAtDesc();
+        }
 
         List<Map<String, Object>> activities = recentReviews.stream()
             .limit(limit)
@@ -369,13 +463,20 @@ public class AnalyticsController {
      */
     @GetMapping("/top-repositories")
     public ResponseEntity<List<Map<String, Object>>> getTopRepositories(
+            @AuthenticationPrincipal AuthenticatedUser auth,
             @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit) {
 
         try {
             LocalDateTime startDate = LocalDateTime.now().minusDays(days);
+            UUID orgId = getOrganizationId(auth);
 
-            List<Object[]> topRepos = reviewRepository.findTopRepositoriesByReviewCount(startDate, limit);
+            List<Object[]> topRepos;
+            if (orgId != null) {
+                topRepos = reviewRepository.findTopRepositoriesByOrganization(orgId, startDate, limit);
+            } else {
+                topRepos = reviewRepository.findTopRepositoriesByReviewCount(startDate, limit);
+            }
 
             List<Map<String, Object>> result = topRepos.stream()
                 .map(row -> {
@@ -400,13 +501,20 @@ public class AnalyticsController {
      */
     @GetMapping("/top-issue-types")
     public ResponseEntity<List<Map<String, Object>>> getTopIssueTypes(
+            @AuthenticationPrincipal AuthenticatedUser auth,
             @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit) {
 
         try {
             LocalDateTime startDate = LocalDateTime.now().minusDays(days);
+            UUID orgId = getOrganizationId(auth);
 
-            List<Object[]> topTypes = issueRepository.findTopCategoriesByCount(startDate, limit);
+            List<Object[]> topTypes;
+            if (orgId != null) {
+                topTypes = issueRepository.findTopCategoriesByCountByOrganization(orgId, startDate, limit);
+            } else {
+                topTypes = issueRepository.findTopCategoriesByCount(startDate, limit);
+            }
 
             List<Map<String, Object>> result = topTypes.stream()
                 .map(row -> {
@@ -481,14 +589,21 @@ public class AnalyticsController {
     }
 
     /**
-     * Get monthly trend analytics for ALL reviews (admin/global view).
-     * No filtering by user or organization.
+     * Get monthly trend analytics filtered by user's organization.
+     * Falls back to all reviews if user has no organization.
      */
     @GetMapping("/trends/all")
     public ResponseEntity<TrendResponse> getAllTrends(
+            @AuthenticationPrincipal AuthenticatedUser auth,
             @RequestParam(defaultValue = "6") @Min(1) @Max(24) int months) {
         try {
-            TrendResponse trends = trendAnalyticsService.getAllTrends(months);
+            UUID orgId = getOrganizationId(auth);
+            TrendResponse trends;
+            if (orgId != null) {
+                trends = trendAnalyticsService.getOrganizationTrends(orgId, months);
+            } else {
+                trends = trendAnalyticsService.getAllTrends(months);
+            }
             return ResponseEntity.ok(trends);
         } catch (DataAccessException e) {
             log.error("Database error fetching all trends", e);
@@ -539,6 +654,19 @@ public class AnalyticsController {
         return days + " days ago";
     }
 
+    /**
+     * Helper method to get organization ID from authenticated user.
+     */
+    private UUID getOrganizationId(AuthenticatedUser auth) {
+        if (auth == null) {
+            return null;
+        }
+        return userRepository.findByEmail(auth.email())
+                .map(User::getOrganization)
+                .map(org -> org.getId())
+                .orElse(null);
+    }
+
     // ============ Developer Activity Analytics ============
 
     /**
@@ -546,11 +674,13 @@ public class AnalyticsController {
      */
     @GetMapping("/developers/leaderboard")
     public ResponseEntity<List<DeveloperAnalyticsService.DeveloperStats>> getDeveloperLeaderboard(
+            @AuthenticationPrincipal AuthenticatedUser auth,
             @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit) {
         try {
+            UUID orgId = getOrganizationId(auth);
             List<DeveloperAnalyticsService.DeveloperStats> leaderboard =
-                    developerAnalyticsService.getLeaderboard(days, limit);
+                    developerAnalyticsService.getLeaderboard(days, limit, orgId);
             return ResponseEntity.ok(leaderboard);
         } catch (DataAccessException e) {
             log.error("Database error fetching developer leaderboard", e);
@@ -623,10 +753,12 @@ public class AnalyticsController {
      */
     @GetMapping("/developers/summary")
     public ResponseEntity<DeveloperAnalyticsService.SummaryStats> getDeveloperSummary(
+            @AuthenticationPrincipal AuthenticatedUser auth,
             @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days) {
         try {
+            UUID orgId = getOrganizationId(auth);
             DeveloperAnalyticsService.SummaryStats summary =
-                    developerAnalyticsService.getSummaryStats(days);
+                    developerAnalyticsService.getSummaryStats(days, orgId);
             return ResponseEntity.ok(summary);
         } catch (DataAccessException e) {
             log.error("Database error fetching developer summary", e);
@@ -639,10 +771,12 @@ public class AnalyticsController {
      */
     @GetMapping("/developers/pr-sizes")
     public ResponseEntity<List<DeveloperAnalyticsService.SizeDistribution>> getPrSizeDistribution(
+            @AuthenticationPrincipal AuthenticatedUser auth,
             @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days) {
         try {
+            UUID orgId = getOrganizationId(auth);
             List<DeveloperAnalyticsService.SizeDistribution> distribution =
-                    developerAnalyticsService.getPrSizeDistribution(days);
+                    developerAnalyticsService.getPrSizeDistribution(days, orgId);
             return ResponseEntity.ok(distribution);
         } catch (DataAccessException e) {
             log.error("Database error fetching PR size distribution", e);
