@@ -29,6 +29,9 @@ CodeLens combines multiple LLM providers with static analysis to provide compreh
 ### Analytics
 ![Analytics](docs/screenshots/6_analytics.jpg)
 
+### Developer Pulse
+![Developer Pulse](docs/screenshots/10_dev_pulse.png)
+
 See more screenshots in the [Onboarding Guide](docs/onboarding.md).
 
 ## Tech Stack
