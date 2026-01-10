@@ -323,13 +323,23 @@ public class ReviewController {
     }
 
     /**
-     * Get recent reviews (all users) with optional repository filter
+     * Get recent reviews (all users in same organization) with optional repository filter
      */
     @GetMapping("/recent")
     public ResponseEntity<List<ReviewResponse>> getRecentReviews(
+            @AuthenticationPrincipal AuthenticatedUser auth,
             @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit,
             @RequestParam(required = false) String repository) {
-        List<Review> reviews = reviewService.getRecentReviews(limit, repository);
+
+        UUID orgId = null;
+        if (auth != null) {
+            User user = userRepository.findByEmail(auth.email()).orElse(null);
+            if (user != null && user.getOrganization() != null) {
+                orgId = user.getOrganization().getId();
+            }
+        }
+
+        List<Review> reviews = reviewService.getRecentReviews(limit, repository, orgId);
         return ResponseEntity.ok(reviews.stream().map(ReviewResponse::from).toList());
     }
 
@@ -352,23 +362,28 @@ public class ReviewController {
     }
 
     /**
-     * Get distinct repository names for filtering
+     * Get distinct repository names for filtering (filtered by organization)
      */
     @GetMapping("/repositories")
     public ResponseEntity<List<String>> getRepositories(
             @AuthenticationPrincipal AuthenticatedUser auth,
             @RequestParam(defaultValue = "false") boolean all) {
-        if (all) {
-            return ResponseEntity.ok(reviewService.getDistinctRepositoryNames());
-        }
         if (auth == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        Optional<User> user = userRepository.findByEmail(auth.email());
-        if (user.isEmpty()) {
+        Optional<User> userOpt = userRepository.findByEmail(auth.email());
+        if (userOpt.isEmpty()) {
             return ResponseEntity.ok(List.of());
         }
-        return ResponseEntity.ok(reviewService.getDistinctRepositoryNamesForUser(user.get().getId()));
+        User user = userOpt.get();
+
+        if (all) {
+            // Get all repos in user's organization
+            UUID orgId = user.getOrganization() != null ? user.getOrganization().getId() : null;
+            return ResponseEntity.ok(reviewService.getDistinctRepositoryNames(orgId));
+        }
+        // Get repos for current user only
+        return ResponseEntity.ok(reviewService.getDistinctRepositoryNamesForUser(user.getId()));
     }
 
     /**

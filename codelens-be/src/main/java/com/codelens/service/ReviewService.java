@@ -782,14 +782,32 @@ public class ReviewService implements ReviewExecutor {
     }
 
     /**
-     * Get recent reviews with optional repository filter
+     * Get recent reviews with optional repository filter (filtered by organization)
      */
-    public List<Review> getRecentReviews(int limit, String repositoryName) {
+    public List<Review> getRecentReviews(int limit, String repositoryName, UUID organizationId) {
+        if (organizationId != null) {
+            if (repositoryName != null && !repositoryName.isEmpty()) {
+                return reviewRepository.findByOrganizationAndRepositoryName(
+                    organizationId, repositoryName, org.springframework.data.domain.PageRequest.of(0, limit));
+            }
+            return reviewRepository.findRecentReviewsByOrganization(
+                organizationId, org.springframework.data.domain.PageRequest.of(0, limit));
+        }
+        // Fallback for users without organization (shouldn't happen in production)
         if (repositoryName != null && !repositoryName.isEmpty()) {
             return reviewRepository.findByRepositoryNameOrderByCreatedAtDesc(
                 repositoryName, org.springframework.data.domain.PageRequest.of(0, limit));
         }
         return reviewRepository.findRecentReviews(org.springframework.data.domain.PageRequest.of(0, limit));
+    }
+
+    /**
+     * Get recent reviews with optional repository filter (legacy - no org filter)
+     * @deprecated Use getRecentReviews(int, String, UUID) instead
+     */
+    @Deprecated
+    public List<Review> getRecentReviews(int limit, String repositoryName) {
+        return getRecentReviews(limit, repositoryName, null);
     }
 
     /**
@@ -803,10 +821,22 @@ public class ReviewService implements ReviewExecutor {
     }
 
     /**
-     * Get distinct repository names (all)
+     * Get distinct repository names filtered by organization
      */
-    public List<String> getDistinctRepositoryNames() {
+    public List<String> getDistinctRepositoryNames(UUID organizationId) {
+        if (organizationId != null) {
+            return reviewRepository.findDistinctRepositoryNamesByOrganization(organizationId);
+        }
         return reviewRepository.findDistinctRepositoryNames();
+    }
+
+    /**
+     * Get distinct repository names (all - no org filter)
+     * @deprecated Use getDistinctRepositoryNames(UUID) instead
+     */
+    @Deprecated
+    public List<String> getDistinctRepositoryNames() {
+        return getDistinctRepositoryNames(null);
     }
 
     /**

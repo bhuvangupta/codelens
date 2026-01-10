@@ -42,4 +42,21 @@ public interface LlmUsageRepository extends JpaRepository<LlmUsage, UUID> {
 
     @Query("SELECT AVG(u.latencyMs) FROM LlmUsage u WHERE u.organization = :org AND u.provider = :provider AND u.createdAt >= :since")
     Double getAverageLatencyByProvider(@Param("org") Organization org, @Param("provider") String provider, @Param("since") LocalDateTime since);
+
+    // ============ Organization ID-based queries ============
+
+    @Query("SELECT SUM(u.estimatedCost) FROM LlmUsage u WHERE u.organization.id = :orgId AND u.createdAt >= :since")
+    Double sumEstimatedCostByOrganizationAndCreatedAtAfter(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since);
+
+    @Query("SELECT SUM(u.inputTokens + u.outputTokens) FROM LlmUsage u WHERE u.organization.id = :orgId AND u.createdAt >= :since")
+    Integer sumTotalTokensByOrganizationAndCreatedAtAfter(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since);
+
+    @Query("SELECT SUM(u.inputTokens) FROM LlmUsage u WHERE u.organization.id = :orgId AND u.createdAt >= :since")
+    Integer sumInputTokensByOrganizationAndCreatedAtAfter(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since);
+
+    @Query("SELECT SUM(u.outputTokens) FROM LlmUsage u WHERE u.organization.id = :orgId AND u.createdAt >= :since")
+    Integer sumOutputTokensByOrganizationAndCreatedAtAfter(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since);
+
+    @Query("SELECT u.provider, SUM(u.estimatedCost) FROM LlmUsage u WHERE u.organization.id = :orgId AND u.createdAt >= :since GROUP BY u.provider")
+    List<Object[]> sumCostByProviderAndOrganizationAfter(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since);
 }

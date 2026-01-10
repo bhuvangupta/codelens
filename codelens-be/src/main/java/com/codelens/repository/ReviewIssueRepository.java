@@ -69,4 +69,36 @@ public interface ReviewIssueRepository extends JpaRepository<ReviewIssue, UUID> 
 
     @Query("SELECT COUNT(ri) FROM ReviewIssue ri WHERE ri.isHelpful = true AND ri.feedbackAt >= :since")
     long countByIsHelpfulTrueAndFeedbackAtAfter(@Param("since") LocalDateTime since);
+
+    // ============ Organization-scoped queries ============
+
+    @Query("SELECT COUNT(ri) FROM ReviewIssue ri WHERE ri.review.user.organization.id = :orgId")
+    long countByOrganization(@Param("orgId") UUID orgId);
+
+    @Query("SELECT COUNT(ri) FROM ReviewIssue ri WHERE ri.review.user.organization.id = :orgId AND ri.severity = :severity")
+    long countByOrganizationAndSeverity(@Param("orgId") UUID orgId, @Param("severity") ReviewIssue.Severity severity);
+
+    @Query("SELECT DATE(ri.createdAt), COUNT(ri) FROM ReviewIssue ri WHERE ri.review.user.organization.id = :orgId AND ri.createdAt >= :since GROUP BY DATE(ri.createdAt)")
+    List<Object[]> countByDayAfterByOrganization(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since);
+
+    @Query("SELECT ri.source, COUNT(ri) FROM ReviewIssue ri WHERE ri.review.user.organization.id = :orgId AND ri.createdAt >= :since GROUP BY ri.source")
+    List<Object[]> countBySourceAfterByOrganization(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since);
+
+    @Query("SELECT ri.category, COUNT(ri) FROM ReviewIssue ri WHERE ri.review.user.organization.id = :orgId AND ri.createdAt >= :since GROUP BY ri.category")
+    List<Object[]> countByCategoryAfterByOrganization(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since);
+
+    @Query("SELECT COUNT(ri) FROM ReviewIssue ri WHERE ri.review.user.organization.id = :orgId AND ri.cveId IS NOT NULL")
+    long countByCveIdNotNullByOrganization(@Param("orgId") UUID orgId);
+
+    @Query(value = """
+        SELECT ri.category, COUNT(ri.id) as cnt
+        FROM review_issues ri
+        JOIN reviews r ON ri.review_id = r.id
+        JOIN users u ON r.user_id = u.id
+        WHERE u.organization_id = :orgId AND ri.created_at >= :since
+        GROUP BY ri.category
+        ORDER BY cnt DESC
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<Object[]> findTopCategoriesByCountByOrganization(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since, @Param("limit") int limit);
 }

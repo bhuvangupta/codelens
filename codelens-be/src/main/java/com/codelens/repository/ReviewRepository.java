@@ -34,6 +34,9 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
 
     List<Review> findTop10ByOrderByCreatedAtDesc();
 
+    @Query("SELECT r FROM Review r WHERE r.user.organization.id = :orgId ORDER BY r.createdAt DESC")
+    List<Review> findTop10ByOrganizationOrderByCreatedAtDesc(@Param("orgId") UUID orgId, Pageable pageable);
+
     List<Review> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
     // Paginated queries for reviews list
@@ -54,6 +57,29 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
     List<String> findDistinctRepositoryNamesByUserId(@Param("userId") UUID userId);
 
     long countByCreatedAtAfter(LocalDateTime since);
+
+    // ============ Organization-scoped queries ============
+
+    @Query("SELECT r FROM Review r WHERE r.user.organization.id = :orgId ORDER BY r.createdAt DESC")
+    List<Review> findRecentReviewsByOrganization(@Param("orgId") UUID orgId, Pageable pageable);
+
+    @Query("SELECT r FROM Review r WHERE r.user.organization.id = :orgId AND r.repositoryName = :repoName ORDER BY r.createdAt DESC")
+    List<Review> findByOrganizationAndRepositoryName(@Param("orgId") UUID orgId, @Param("repoName") String repoName, Pageable pageable);
+
+    @Query("SELECT DISTINCT r.repositoryName FROM Review r WHERE r.user.organization.id = :orgId AND r.repositoryName IS NOT NULL ORDER BY r.repositoryName")
+    List<String> findDistinctRepositoryNamesByOrganization(@Param("orgId") UUID orgId);
+
+    @Query("SELECT COUNT(r) FROM Review r WHERE r.user.organization.id = :orgId")
+    long countByOrganization(@Param("orgId") UUID orgId);
+
+    @Query("SELECT COUNT(r) FROM Review r WHERE r.user.organization.id = :orgId AND r.status = :status")
+    long countByOrganizationAndStatus(@Param("orgId") UUID orgId, @Param("status") Review.ReviewStatus status);
+
+    @Query("SELECT COUNT(r) FROM Review r WHERE r.user.organization.id = :orgId AND r.createdAt >= :since")
+    long countByOrganizationAndCreatedAtAfter(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since);
+
+    @Query("SELECT COUNT(r) FROM Review r WHERE r.user.organization.id = :orgId AND r.status = :status AND r.createdAt >= :since")
+    long countByOrganizationAndStatusAndCreatedAtAfter(@Param("orgId") UUID orgId, @Param("status") Review.ReviewStatus status, @Param("since") LocalDateTime since);
 
     @Query("SELECT r FROM Review r WHERE r.repository.organization.id = :orgId ORDER BY r.createdAt DESC")
     Page<Review> findByOrganizationId(@Param("orgId") UUID orgId, Pageable pageable);
@@ -76,6 +102,9 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
 
     @Query("SELECT DATE(r.createdAt), COUNT(r) FROM Review r WHERE r.createdAt >= :since GROUP BY DATE(r.createdAt)")
     List<Object[]> countByDayAfter(@Param("since") LocalDateTime since);
+
+    @Query("SELECT DATE(r.createdAt), COUNT(r) FROM Review r WHERE r.user.organization.id = :orgId AND r.createdAt >= :since GROUP BY DATE(r.createdAt)")
+    List<Object[]> countByDayAfterByOrganization(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since);
 
     /**
      * Find the most recent review for the same PR URL and commit SHA
@@ -106,6 +135,25 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
         LIMIT :limit
         """, nativeQuery = true)
     List<Object[]> findTopRepositoriesByReviewCount(@Param("since") LocalDateTime since, @Param("limit") int limit);
+
+    /**
+     * Get top repositories by review count with issue stats (org-filtered)
+     */
+    @Query(value = """
+        SELECT r.repository_name as repo_name,
+               COUNT(r.id) as review_count,
+               COALESCE(SUM(r.issues_found), 0) as issue_count,
+               COALESCE(SUM(r.critical_issues), 0) as critical_count
+        FROM reviews r
+        JOIN users u ON r.user_id = u.id
+        WHERE u.organization_id = :orgId
+          AND r.created_at >= :since
+          AND r.repository_name IS NOT NULL
+        GROUP BY r.repository_name
+        ORDER BY review_count DESC
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<Object[]> findTopRepositoriesByOrganization(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since, @Param("limit") int limit);
 
     /**
      * Find review IDs with diffs older than retention period (for cleanup)
@@ -362,6 +410,31 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
     List<Object[]> getDeveloperLeaderboard(@Param("since") LocalDateTime since, @Param("limit") int limit);
 
     /**
+     * Get developer leaderboard filtered by organization.
+     */
+    @Query(value = """
+        SELECT u.id as userId,
+               u.name as userName,
+               u.email as userEmail,
+               u.avatar_url as avatarUrl,
+               COUNT(r.id) as reviewCount,
+               COALESCE(SUM(r.lines_added + r.lines_deleted), 0) as linesReviewed,
+               COALESCE(SUM(r.issues_found), 0) as issuesFound,
+               COALESCE(AVG(r.issues_found), 0) as avgIssuesPerReview,
+               COALESCE(SUM(r.critical_issues), 0) as criticalIssues,
+               COALESCE(AVG(TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at)), 0) as avgCycleTimeSeconds
+        FROM reviews r
+        JOIN users u ON r.user_id = u.id
+        WHERE u.organization_id = :orgId
+          AND r.created_at >= :since
+          AND r.status = 'COMPLETED'
+        GROUP BY u.id, u.name, u.email, u.avatar_url
+        ORDER BY reviewCount DESC
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<Object[]> getDeveloperLeaderboardByOrganization(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since, @Param("limit") int limit);
+
+    /**
      * Get developer stats for a specific user.
      */
     @Query(value = """
@@ -483,6 +556,70 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
           AND r.status = 'COMPLETED'
         """, nativeQuery = true)
     List<Object[]> getDeveloperSummaryStats(@Param("since") LocalDateTime since);
+
+    /**
+     * Get total stats for developers in an organization.
+     */
+    @Query(value = """
+        SELECT COUNT(DISTINCT r.user_id) as totalDevelopers,
+               COUNT(r.id) as totalReviews,
+               COALESCE(SUM(r.lines_added + r.lines_deleted), 0) as totalLinesReviewed,
+               COALESCE(SUM(r.issues_found), 0) as totalIssuesFound,
+               COALESCE(AVG(TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at)), 0) as avgCycleTimeSeconds
+        FROM reviews r
+        JOIN users u ON r.user_id = u.id
+        WHERE u.organization_id = :orgId
+          AND r.created_at >= :since
+          AND r.status = 'COMPLETED'
+        """, nativeQuery = true)
+    List<Object[]> getDeveloperSummaryStatsByOrganization(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since);
+
+    /**
+     * Get PR size distribution filtered by organization.
+     */
+    @Query(value = """
+        SELECT
+            CASE
+                WHEN (r.lines_added + r.lines_deleted) <= 50 THEN 'XS (1-50)'
+                WHEN (r.lines_added + r.lines_deleted) <= 200 THEN 'S (51-200)'
+                WHEN (r.lines_added + r.lines_deleted) <= 500 THEN 'M (201-500)'
+                WHEN (r.lines_added + r.lines_deleted) <= 1000 THEN 'L (501-1000)'
+                ELSE 'XL (1000+)'
+            END as sizeCategory,
+            COUNT(*) as count
+        FROM reviews r
+        JOIN users u ON r.user_id = u.id
+        WHERE u.organization_id = :orgId
+          AND r.created_at >= :since
+          AND r.status = 'COMPLETED'
+        GROUP BY sizeCategory
+        ORDER BY
+            CASE sizeCategory
+                WHEN 'XS (1-50)' THEN 1
+                WHEN 'S (51-200)' THEN 2
+                WHEN 'M (201-500)' THEN 3
+                WHEN 'L (501-1000)' THEN 4
+                ELSE 5
+            END
+        """, nativeQuery = true)
+    List<Object[]> getPrSizeDistributionByOrganization(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since);
+
+    /**
+     * Get daily activity for all developers in an organization.
+     */
+    @Query(value = """
+        SELECT DATE(r.created_at) as day,
+               COUNT(*) as reviewCount,
+               COALESCE(SUM(r.lines_added + r.lines_deleted), 0) as linesReviewed
+        FROM reviews r
+        JOIN users u ON r.user_id = u.id
+        WHERE u.organization_id = :orgId
+          AND r.created_at >= :since
+          AND r.status = 'COMPLETED'
+        GROUP BY DATE(r.created_at)
+        ORDER BY day
+        """, nativeQuery = true)
+    List<Object[]> getDailyActivityByOrganization(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since);
 
     // ============ Weekly Summary Data ============
 
