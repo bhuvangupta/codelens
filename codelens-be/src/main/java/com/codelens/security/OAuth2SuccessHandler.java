@@ -1,5 +1,10 @@
 package com.codelens.security;
 
+import com.codelens.model.entity.Organization;
+import com.codelens.model.entity.User;
+import com.codelens.repository.UserRepository;
+import com.codelens.service.OrganizationService;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -22,6 +27,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -32,6 +38,8 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
     private final JwtService jwtService;
     private final OAuth2AuthorizedClientService authorizedClientService;
     private final RestTemplate restTemplate;
+    private final OrganizationService organizationService;
+    private final UserRepository userRepository;
 
     @Value("${codelens.security.oauth2.success-redirect-url:http://localhost:5174/auth/callback}")
     private String successRedirectUrl;
@@ -39,10 +47,44 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
     @Value("${codelens.security.github.required-org:}")
     private String requiredGitHubOrg;
 
-    public OAuth2SuccessHandler(JwtService jwtService, OAuth2AuthorizedClientService authorizedClientService) {
+    @Value("${DOMAIN_ORG_MAPPING:{}}")
+    private String domainOrgMappingJson;
+
+    private Map<String, String> domainOrgMapping = new HashMap<>();
+
+    public OAuth2SuccessHandler(JwtService jwtService, OAuth2AuthorizedClientService authorizedClientService,
+                                OrganizationService organizationService, UserRepository userRepository) {
         this.jwtService = jwtService;
         this.authorizedClientService = authorizedClientService;
+        this.organizationService = organizationService;
+        this.userRepository = userRepository;
         this.restTemplate = new RestTemplate();
+    }
+
+    @PostConstruct
+    public void init() {
+        // Parse DOMAIN_ORG_MAPPING JSON: {"ofbusiness.in":"OFBusiness","oxyzo.in":"Oxyzo"}
+        if (domainOrgMappingJson != null && !domainOrgMappingJson.isBlank() && !domainOrgMappingJson.equals("{}")) {
+            try {
+                String json = domainOrgMappingJson.trim();
+                if (json.startsWith("{") && json.endsWith("}")) {
+                    json = json.substring(1, json.length() - 1);
+                    for (String pair : json.split(",")) {
+                        String[] keyValue = pair.split(":");
+                        if (keyValue.length == 2) {
+                            String domain = keyValue[0].trim().replace("\"", "");
+                            String orgName = keyValue[1].trim().replace("\"", "");
+                            if (!domain.isEmpty() && !orgName.isEmpty()) {
+                                domainOrgMapping.put(domain, orgName);
+                            }
+                        }
+                    }
+                }
+                log.info("Loaded domain-to-org mapping: {}", domainOrgMapping);
+            } catch (Exception e) {
+                log.warn("Failed to parse DOMAIN_ORG_MAPPING: {}", e.getMessage());
+            }
+        }
     }
 
     @Override
@@ -108,6 +150,9 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
 
         log.info("OAuth2 login successful for user: {} via {}", email, provider);
 
+        // Auto-assign user to organization based on email domain
+        assignUserToOrganization(email, name, picture, provider, providerId);
+
         String accessToken = jwtService.generateAccessToken(email, name, picture, providerId);
         String refreshToken = jwtService.generateRefreshToken(email);
 
@@ -156,6 +201,55 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         } catch (Exception e) {
             log.error("Error checking GitHub org membership for user {}: {}", username, e.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Auto-assign user to organization based on email domain.
+     * Creates the organization if it doesn't exist.
+     * Creates or updates the user record.
+     */
+    private void assignUserToOrganization(String email, String name, String picture, String provider, String providerId) {
+        if (email == null || !email.contains("@")) {
+            log.warn("Cannot assign organization: invalid email {}", email);
+            return;
+        }
+
+        try {
+            String emailDomain = email.substring(email.indexOf("@") + 1).toLowerCase();
+            String orgName = domainOrgMapping.get(emailDomain);
+
+            // Find or create user
+            User user = userRepository.findByEmail(email).orElse(null);
+
+            if (user == null) {
+                // Create new user
+                user = User.builder()
+                        .email(email)
+                        .name(name != null ? name : email.split("@")[0])
+                        .avatarUrl(picture)
+                        .provider(provider.startsWith("google") ? "google" : provider)
+                        .providerId(providerId)
+                        .build();
+                log.info("Creating new user: {}", email);
+            } else {
+                // Update existing user's last login info
+                user.setName(name != null ? name : user.getName());
+                if (picture != null) {
+                    user.setAvatarUrl(picture);
+                }
+            }
+
+            // Auto-assign to organization if domain mapping exists and user has no org
+            if (orgName != null && user.getOrganization() == null) {
+                Organization org = organizationService.findOrCreateByName(orgName, emailDomain);
+                user.setOrganization(org);
+                log.info("Auto-assigned user {} to organization {} based on email domain {}", email, orgName, emailDomain);
+            }
+
+            userRepository.save(user);
+        } catch (Exception e) {
+            log.error("Error assigning user {} to organization: {}", email, e.getMessage());
         }
     }
 }

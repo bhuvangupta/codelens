@@ -1,5 +1,6 @@
 package com.codelens.api;
 
+import com.codelens.config.OAuth2ClientConfig;
 import com.codelens.model.entity.User;
 import com.codelens.repository.UserRepository;
 import com.codelens.security.AuthenticatedUser;
@@ -11,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -22,6 +24,7 @@ public class AuthController {
     private final JwtService jwtService;
     private final UserRepository userRepository;
     private final TokenBlacklistService tokenBlacklistService;
+    private final OAuth2ClientConfig oAuth2ClientConfig;
 
     @PostMapping("/refresh")
     public ResponseEntity<?> refreshToken(@RequestBody RefreshTokenRequest request) {
@@ -76,6 +79,15 @@ public class AuthController {
             log.debug("Token blacklisted on logout");
         }
         return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
+    }
+
+    /**
+     * Get available OAuth providers for the login page.
+     * This endpoint is public (no auth required).
+     */
+    @GetMapping("/providers")
+    public ResponseEntity<List<OAuth2ClientConfig.DomainProvider>> getProviders() {
+        return ResponseEntity.ok(oAuth2ClientConfig.getDomainProviders());
     }
 
     public record RefreshTokenRequest(String refreshToken) {}

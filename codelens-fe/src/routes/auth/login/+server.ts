@@ -10,8 +10,8 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 	// Get redirect path if provided
 	const redirectPath = url.searchParams.get('redirect');
 
-	// Validate provider
-	if (!['google', 'github'].includes(provider)) {
+	// Validate provider - allow google, github, and google-* for domain-specific OAuth
+	if (provider !== 'google' && provider !== 'github' && !provider.startsWith('google-')) {
 		throw redirect(302, '/?error=invalid_provider');
 	}
 
