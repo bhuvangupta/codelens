@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy, tick } from 'svelte';
-	import { analytics } from '$lib/api/client';
+	import { analytics, settings } from '$lib/api/client';
 	import type { DeveloperStats, DeveloperSummaryStats, SizeDistribution, FeedbackStats, WeeklySummary, DailyActivity } from '$lib/api/client';
 	import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend } from 'chart.js';
 
@@ -11,6 +11,14 @@
 	let error: string | null = null;
 	let days = 30;
 
+	// User role
+	let isAdmin = false;
+	let currentUserId: string | null = null;
+
+	// Developer filter (only for admins)
+	let selectedDeveloperId: string = ''; // empty = all developers (admin only)
+	let allDevelopers: DeveloperStats[] = []; // Full list for dropdown (admin only)
+
 	// Data
 	let leaderboard: DeveloperStats[] = [];
 	let summary: DeveloperSummaryStats | null = null;
@@ -20,6 +28,7 @@
 	let loadingWeeklySummary = false;
 	let dailyActivity: DailyActivity[] = [];
 	let activityError: string | null = null;
+	let selectedDeveloperStats: DeveloperStats | null = null;
 
 	// Chart
 	let activityChartCanvas: HTMLCanvasElement;
@@ -29,24 +38,73 @@
 		loading = true;
 		error = null;
 		try {
-			const [leaderboardData, summaryData, prSizeData, feedbackData] = await Promise.all([
-				analytics.getDeveloperLeaderboard(days, 10),
-				analytics.getDeveloperSummary(days),
-				analytics.getPrSizeDistribution(days),
-				analytics.getFeedbackStats(days)
-			]);
-			leaderboard = leaderboardData;
-			summary = summaryData;
-			prSizes = prSizeData;
-			feedback = feedbackData;
+			// Always load leaderboard (visible to everyone)
+			const leaderboardData = await analytics.getDeveloperLeaderboard(days, 50);
+			leaderboard = leaderboardData.slice(0, 10);
+
+			if (!isAdmin) {
+				// Non-admin: load only their own data
+				allDevelopers = []; // No dropdown for non-admins
+				if (currentUserId) {
+					const [statsData, activityData, prSizeData] = await Promise.all([
+						analytics.getDeveloperStats(currentUserId, days),
+						analytics.getDeveloperActivity(currentUserId, days),
+						analytics.getDeveloperPrSizeDistribution(currentUserId, days)
+					]);
+					selectedDeveloperStats = statsData;
+					dailyActivity = activityData;
+					prSizes = prSizeData;
+					summary = null;
+					feedback = null;
+					await tick();
+					renderActivityChart();
+				}
+			} else if (selectedDeveloperId) {
+				// Admin viewing specific developer's data
+				allDevelopers = leaderboardData;
+				const [statsData, activityData, prSizeData] = await Promise.all([
+					analytics.getDeveloperStats(selectedDeveloperId, days),
+					analytics.getDeveloperActivity(selectedDeveloperId, days),
+					analytics.getDeveloperPrSizeDistribution(selectedDeveloperId, days)
+				]);
+				selectedDeveloperStats = statsData;
+				dailyActivity = activityData;
+				prSizes = prSizeData;
+				leaderboard = leaderboardData.filter(d => d.userId === selectedDeveloperId);
+				// Clear aggregate data when viewing single developer
+				summary = null;
+				feedback = null;
+				await tick();
+				renderActivityChart();
+			} else {
+				// Admin viewing aggregate data for all developers
+				allDevelopers = leaderboardData;
+				const [summaryData, prSizeData, feedbackData] = await Promise.all([
+					analytics.getDeveloperSummary(days),
+					analytics.getPrSizeDistribution(days),
+					analytics.getFeedbackStats(days)
+				]);
+				summary = summaryData;
+				prSizes = prSizeData;
+				feedback = feedbackData;
+				selectedDeveloperStats = null;
+				// Don't clear dailyActivity here - let loadDailyActivity handle it
+			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load data';
 		} finally {
 			loading = false;
+			// After loading completes, try to render chart if data was loaded by loadDailyActivity
+			await tick();
+			if (dailyActivity.length > 0 && activityChartCanvas) {
+				renderActivityChart();
+			}
 		}
 	}
 
 	async function loadDailyActivity() {
+		if (selectedDeveloperId) return; // Already loaded in loadData for specific developer
+
 		activityError = null;
 		try {
 			// Get current user's activity
@@ -65,6 +123,14 @@
 				activityError = 'Failed to load activity data';
 			}
 		}
+	}
+
+	function handleDeveloperChange() {
+		loadData();
+		if (!selectedDeveloperId) {
+			loadDailyActivity();
+		}
+		loadWeeklySummary();
 	}
 
 	function renderActivityChart() {
@@ -177,18 +243,38 @@
 	async function loadWeeklySummary() {
 		loadingWeeklySummary = true;
 		try {
-			weeklySummary = await analytics.getMyWeeklySummary(7);
+			if (selectedDeveloperId) {
+				weeklySummary = await analytics.getDeveloperWeeklySummary(selectedDeveloperId, 7);
+			} else {
+				weeklySummary = await analytics.getMyWeeklySummary(7);
+			}
 		} catch (e) {
 			console.error('Failed to load weekly summary:', e);
+			weeklySummary = null;
 		} finally {
 			loadingWeeklySummary = false;
 		}
 	}
 
-	onMount(() => {
+	onMount(async () => {
+		// First, determine user role and ID
+		try {
+			const [userSettings, myStats] = await Promise.all([
+				settings.getUser(),
+				analytics.getMyDeveloperStats(days)
+			]);
+			isAdmin = userSettings.role === 'ADMIN';
+			currentUserId = myStats?.userId || null;
+		} catch (e) {
+			console.error('Failed to load user info:', e);
+		}
+
+		// Then load data based on role
 		loadData();
 		loadWeeklySummary();
-		loadDailyActivity();
+		if (isAdmin && !selectedDeveloperId) {
+			loadDailyActivity();
+		}
 	});
 
 	function formatNumber(num: number): string {
@@ -205,26 +291,44 @@
 
 	function handleDaysChange() {
 		loadData();
-		loadDailyActivity();
+		if (isAdmin && !selectedDeveloperId) {
+			loadDailyActivity();
+		}
+		loadWeeklySummary();
 	}
 </script>
 
 <svelte:head>
-	<title>Developer Activity - CodeLens</title>
+	<title>Developer Pulse - CodeLens</title>
 </svelte:head>
 
 <div class="p-6 max-w-7xl mx-auto">
 	<!-- Header -->
 	<div class="flex items-center justify-between mb-6">
 		<div>
-			<h1 class="text-2xl font-bold text-gray-900">Developer Activity</h1>
+			<h1 class="text-2xl font-bold text-gray-900">Developer Pulse</h1>
 			<p class="text-gray-600">Track review activity and team performance</p>
 		</div>
 		<div class="flex items-center gap-3">
+			<!-- Developer Filter (Admin only) -->
+			{#if isAdmin}
+				<label class="text-sm text-gray-600">Developer:</label>
+				<select
+					bind:value={selectedDeveloperId}
+					onchange={handleDeveloperChange}
+					class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 min-w-[180px]"
+				>
+					<option value="">All Developers</option>
+					{#each allDevelopers as dev}
+						<option value={dev.userId}>{dev.userName || dev.userEmail || 'Unknown'}</option>
+					{/each}
+				</select>
+			{/if}
+
 			<label class="text-sm text-gray-600">Time period:</label>
 			<select
 				bind:value={days}
-				on:change={handleDaysChange}
+				onchange={handleDaysChange}
 				class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
 			>
 				<option value={7}>Last 7 days</option>
@@ -246,19 +350,37 @@
 	{:else}
 		<!-- Summary Cards -->
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-			<div class="bg-white rounded-xl border border-gray-200 p-5">
-				<div class="flex items-center gap-3">
-					<div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-						<svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-						</svg>
-					</div>
-					<div>
-						<p class="text-2xl font-bold text-gray-900">{summary?.totalDevelopers || 0}</p>
-						<p class="text-sm text-gray-500">Active Reviewers</p>
+			{#if selectedDeveloperId && selectedDeveloperStats}
+				<!-- Individual Developer Stats -->
+				<div class="bg-white rounded-xl border border-gray-200 p-5">
+					<div class="flex items-center gap-3">
+						<div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+							<svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+							</svg>
+						</div>
+						<div>
+							<p class="text-2xl font-bold text-gray-900">{selectedDeveloperStats.repositoriesReviewed || 0}</p>
+							<p class="text-sm text-gray-500">Repositories</p>
+						</div>
 					</div>
 				</div>
-			</div>
+			{:else}
+				<!-- All Developers Stats -->
+				<div class="bg-white rounded-xl border border-gray-200 p-5">
+					<div class="flex items-center gap-3">
+						<div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+							<svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+							</svg>
+						</div>
+						<div>
+							<p class="text-2xl font-bold text-gray-900">{summary?.totalDevelopers || 0}</p>
+							<p class="text-sm text-gray-500">Active Reviewers</p>
+						</div>
+					</div>
+				</div>
+			{/if}
 
 			<div class="bg-white rounded-xl border border-gray-200 p-5">
 				<div class="flex items-center gap-3">
@@ -268,7 +390,7 @@
 						</svg>
 					</div>
 					<div>
-						<p class="text-2xl font-bold text-gray-900">{formatNumber(summary?.totalReviews || 0)}</p>
+						<p class="text-2xl font-bold text-gray-900">{formatNumber(selectedDeveloperStats?.reviewCount ?? summary?.totalReviews ?? 0)}</p>
 						<p class="text-sm text-gray-500">Reviews Completed</p>
 					</div>
 				</div>
@@ -282,7 +404,7 @@
 						</svg>
 					</div>
 					<div>
-						<p class="text-2xl font-bold text-gray-900">{formatNumber(summary?.totalLinesReviewed || 0)}</p>
+						<p class="text-2xl font-bold text-gray-900">{formatNumber(selectedDeveloperStats?.linesReviewed ?? summary?.totalLinesReviewed ?? 0)}</p>
 						<p class="text-sm text-gray-500">Lines Reviewed</p>
 					</div>
 				</div>
@@ -296,7 +418,7 @@
 						</svg>
 					</div>
 					<div>
-						<p class="text-2xl font-bold text-gray-900">{formatNumber(summary?.totalIssuesFound || 0)}</p>
+						<p class="text-2xl font-bold text-gray-900">{formatNumber(selectedDeveloperStats?.issuesFound ?? summary?.totalIssuesFound ?? 0)}</p>
 						<p class="text-sm text-gray-500">Issues Found</p>
 					</div>
 				</div>
@@ -310,7 +432,7 @@
 						</svg>
 					</div>
 					<div>
-						<p class="text-2xl font-bold text-gray-900">{formatTime(summary?.avgCycleTimeSeconds || 0)}</p>
+						<p class="text-2xl font-bold text-gray-900">{formatTime(selectedDeveloperStats?.avgCycleTimeSeconds ?? summary?.avgCycleTimeSeconds ?? 0)}</p>
 						<p class="text-sm text-gray-500">Avg Review Time</p>
 					</div>
 				</div>
@@ -369,7 +491,14 @@
 		<div class="bg-white rounded-xl border border-gray-200 p-6 mb-8">
 			<div class="flex items-center justify-between mb-4">
 				<div>
-					<h2 class="text-lg font-semibold text-gray-900">Your Daily Activity</h2>
+					<h2 class="text-lg font-semibold text-gray-900">
+						{#if selectedDeveloperId}
+							{@const selectedDev = allDevelopers.find(d => d.userId === selectedDeveloperId)}
+							{selectedDev?.userName || 'Developer'}'s Daily Activity
+						{:else}
+							Your Daily Activity
+						{/if}
+					</h2>
 					<p class="text-sm text-gray-500">Reviews and lines reviewed over time</p>
 				</div>
 				<div class="flex items-center gap-2">

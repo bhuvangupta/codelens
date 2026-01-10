@@ -142,6 +142,21 @@ public class DeveloperAnalyticsService {
     }
 
     /**
+     * Get PR size distribution for a specific user.
+     */
+    public List<SizeDistribution> getPrSizeDistributionByUser(UUID userId, int days) {
+        LocalDateTime since = LocalDateTime.now().minusDays(days);
+        List<Object[]> results = reviewRepository.getPrSizeDistributionByUser(userId, since);
+
+        return results.stream()
+                .map(row -> new SizeDistribution(
+                        row[0].toString(),
+                        ((Number) row[1]).longValue()
+                ))
+                .toList();
+    }
+
+    /**
      * Get average cycle time trend.
      */
     public List<CycleTimeTrend> getCycleTimeTrend(int days) {

@@ -425,6 +425,35 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
     List<Object[]> getPrSizeDistribution(@Param("since") LocalDateTime since);
 
     /**
+     * Get PR size distribution for a specific user.
+     */
+    @Query(value = """
+        SELECT
+            CASE
+                WHEN (r.lines_added + r.lines_deleted) <= 50 THEN 'XS (1-50)'
+                WHEN (r.lines_added + r.lines_deleted) <= 200 THEN 'S (51-200)'
+                WHEN (r.lines_added + r.lines_deleted) <= 500 THEN 'M (201-500)'
+                WHEN (r.lines_added + r.lines_deleted) <= 1000 THEN 'L (501-1000)'
+                ELSE 'XL (1000+)'
+            END as sizeCategory,
+            COUNT(*) as count
+        FROM reviews r
+        WHERE r.user_id = :userId
+          AND r.created_at >= :since
+          AND r.status = 'COMPLETED'
+        GROUP BY sizeCategory
+        ORDER BY
+            CASE sizeCategory
+                WHEN 'XS (1-50)' THEN 1
+                WHEN 'S (51-200)' THEN 2
+                WHEN 'M (201-500)' THEN 3
+                WHEN 'L (501-1000)' THEN 4
+                ELSE 5
+            END
+        """, nativeQuery = true)
+    List<Object[]> getPrSizeDistributionByUser(@Param("userId") UUID userId, @Param("since") LocalDateTime since);
+
+    /**
      * Get average review cycle time by day.
      */
     @Query(value = """

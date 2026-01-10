@@ -221,6 +221,9 @@ export const analytics = {
 	getPrSizeDistribution: (days = 30) =>
 		request<SizeDistribution[]>(`/analytics/developers/pr-sizes?days=${days}`),
 
+	getDeveloperPrSizeDistribution: (userId: string, days = 30) =>
+		request<SizeDistribution[]>(`/analytics/developers/${userId}/pr-sizes?days=${days}`),
+
 	getCycleTimeTrend: (days = 30) =>
 		request<CycleTimeTrend[]>(`/analytics/developers/cycle-time?days=${days}`),
 
