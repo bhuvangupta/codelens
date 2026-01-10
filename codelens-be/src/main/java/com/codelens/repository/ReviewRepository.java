@@ -333,4 +333,164 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
         ORDER BY month
         """, nativeQuery = true)
     List<MonthlyMetrics> getMonthlyTrendAll(@Param("since") LocalDateTime since);
+
+    // ============ Developer Activity Metrics ============
+
+    /**
+     * Get developer leaderboard with review stats.
+     * Returns top developers by review count with lines reviewed and issues found.
+     */
+    @Query(value = """
+        SELECT u.id as userId,
+               u.name as userName,
+               u.email as userEmail,
+               u.avatar_url as avatarUrl,
+               COUNT(r.id) as reviewCount,
+               COALESCE(SUM(r.lines_added + r.lines_deleted), 0) as linesReviewed,
+               COALESCE(SUM(r.issues_found), 0) as issuesFound,
+               COALESCE(AVG(r.issues_found), 0) as avgIssuesPerReview,
+               COALESCE(SUM(r.critical_issues), 0) as criticalIssues,
+               COALESCE(AVG(TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at)), 0) as avgCycleTimeSeconds
+        FROM reviews r
+        JOIN users u ON r.user_id = u.id
+        WHERE r.created_at >= :since
+          AND r.status = 'COMPLETED'
+        GROUP BY u.id, u.name, u.email, u.avatar_url
+        ORDER BY reviewCount DESC
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<Object[]> getDeveloperLeaderboard(@Param("since") LocalDateTime since, @Param("limit") int limit);
+
+    /**
+     * Get developer stats for a specific user.
+     */
+    @Query(value = """
+        SELECT COUNT(r.id) as reviewCount,
+               COALESCE(SUM(r.lines_added + r.lines_deleted), 0) as linesReviewed,
+               COALESCE(SUM(r.issues_found), 0) as issuesFound,
+               COALESCE(AVG(r.issues_found), 0) as avgIssuesPerReview,
+               COALESCE(SUM(r.critical_issues), 0) as criticalIssues,
+               COALESCE(SUM(r.high_issues), 0) as highIssues,
+               COALESCE(AVG(TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at)), 0) as avgCycleTimeSeconds,
+               COUNT(DISTINCT r.repository_name) as repositoriesReviewed
+        FROM reviews r
+        WHERE r.user_id = :userId
+          AND r.created_at >= :since
+          AND r.status = 'COMPLETED'
+        """, nativeQuery = true)
+    List<Object[]> getDeveloperStats(@Param("userId") UUID userId, @Param("since") LocalDateTime since);
+
+    /**
+     * Get weekly review counts for a developer (for trend chart).
+     */
+    @Query(value = """
+        SELECT DATE(r.created_at) as day,
+               COUNT(*) as reviewCount,
+               COALESCE(SUM(r.lines_added + r.lines_deleted), 0) as linesReviewed
+        FROM reviews r
+        WHERE r.user_id = :userId
+          AND r.created_at >= :since
+          AND r.status = 'COMPLETED'
+        GROUP BY DATE(r.created_at)
+        ORDER BY day
+        """, nativeQuery = true)
+    List<Object[]> getDeveloperDailyActivity(@Param("userId") UUID userId, @Param("since") LocalDateTime since);
+
+    /**
+     * Get PR size distribution (for histogram).
+     */
+    @Query(value = """
+        SELECT
+            CASE
+                WHEN (r.lines_added + r.lines_deleted) <= 50 THEN 'XS (1-50)'
+                WHEN (r.lines_added + r.lines_deleted) <= 200 THEN 'S (51-200)'
+                WHEN (r.lines_added + r.lines_deleted) <= 500 THEN 'M (201-500)'
+                WHEN (r.lines_added + r.lines_deleted) <= 1000 THEN 'L (501-1000)'
+                ELSE 'XL (1000+)'
+            END as sizeCategory,
+            COUNT(*) as count
+        FROM reviews r
+        WHERE r.created_at >= :since
+          AND r.status = 'COMPLETED'
+        GROUP BY sizeCategory
+        ORDER BY
+            CASE sizeCategory
+                WHEN 'XS (1-50)' THEN 1
+                WHEN 'S (51-200)' THEN 2
+                WHEN 'M (201-500)' THEN 3
+                WHEN 'L (501-1000)' THEN 4
+                ELSE 5
+            END
+        """, nativeQuery = true)
+    List<Object[]> getPrSizeDistribution(@Param("since") LocalDateTime since);
+
+    /**
+     * Get average review cycle time by day.
+     */
+    @Query(value = """
+        SELECT DATE(r.created_at) as day,
+               AVG(TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at)) as avgCycleTimeSeconds
+        FROM reviews r
+        WHERE r.created_at >= :since
+          AND r.status = 'COMPLETED'
+          AND r.started_at IS NOT NULL
+          AND r.completed_at IS NOT NULL
+        GROUP BY DATE(r.created_at)
+        ORDER BY day
+        """, nativeQuery = true)
+    List<Object[]> getAverageCycleTimeByDay(@Param("since") LocalDateTime since);
+
+    /**
+     * Get total stats for all developers (summary).
+     */
+    @Query(value = """
+        SELECT COUNT(DISTINCT r.user_id) as totalDevelopers,
+               COUNT(r.id) as totalReviews,
+               COALESCE(SUM(r.lines_added + r.lines_deleted), 0) as totalLinesReviewed,
+               COALESCE(SUM(r.issues_found), 0) as totalIssuesFound,
+               COALESCE(AVG(TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at)), 0) as avgCycleTimeSeconds
+        FROM reviews r
+        WHERE r.created_at >= :since
+          AND r.status = 'COMPLETED'
+        """, nativeQuery = true)
+    List<Object[]> getDeveloperSummaryStats(@Param("since") LocalDateTime since);
+
+    // ============ Weekly Summary Data ============
+
+    /**
+     * Get reviews for a user within a time period (for weekly summary).
+     */
+    @Query("SELECT r FROM Review r WHERE r.user.id = :userId AND r.createdAt >= :since AND r.status = 'COMPLETED' ORDER BY r.createdAt DESC")
+    List<Review> findByUserIdAndCreatedAtAfterCompleted(@Param("userId") UUID userId, @Param("since") LocalDateTime since);
+
+    /**
+     * Get issue category counts for a user within a time period.
+     */
+    @Query(value = """
+        SELECT ri.category, COUNT(*) as cnt
+        FROM review_issues ri
+        JOIN reviews r ON ri.review_id = r.id
+        WHERE r.user_id = :userId
+          AND r.created_at >= :since
+          AND r.status = 'COMPLETED'
+        GROUP BY ri.category
+        ORDER BY cnt DESC
+        """, nativeQuery = true)
+    List<Object[]> getIssueCategoriesForUser(@Param("userId") UUID userId, @Param("since") LocalDateTime since);
+
+    /**
+     * Get top repositories by review count for a user within a time period.
+     */
+    @Query(value = """
+        SELECT r.repository_name, COUNT(*) as cnt
+        FROM reviews r
+        WHERE r.user_id = :userId
+          AND r.created_at >= :since
+          AND r.status = 'COMPLETED'
+          AND r.repository_name IS NOT NULL
+        GROUP BY r.repository_name
+        ORDER BY cnt DESC
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<Object[]> getTopRepositoriesForUser(@Param("userId") UUID userId, @Param("since") LocalDateTime since, @Param("limit") int limit);
 }

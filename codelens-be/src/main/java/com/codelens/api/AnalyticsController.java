@@ -4,6 +4,9 @@ import com.codelens.api.dto.TrendResponse;
 import com.codelens.repository.LlmUsageRepository;
 import com.codelens.repository.ReviewIssueRepository;
 import com.codelens.repository.ReviewRepository;
+import com.codelens.repository.UserRepository;
+import com.codelens.security.AuthenticatedUser;
+import com.codelens.service.DeveloperAnalyticsService;
 import com.codelens.service.LlmCostService;
 import com.codelens.service.TrendAnalyticsService;
 import jakarta.validation.constraints.Max;
@@ -12,7 +15,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,18 +35,24 @@ public class AnalyticsController {
     private final LlmUsageRepository llmUsageRepository;
     private final TrendAnalyticsService trendAnalyticsService;
     private final LlmCostService llmCostService;
+    private final DeveloperAnalyticsService developerAnalyticsService;
+    private final UserRepository userRepository;
 
     public AnalyticsController(
             ReviewRepository reviewRepository,
             ReviewIssueRepository issueRepository,
             LlmUsageRepository llmUsageRepository,
             TrendAnalyticsService trendAnalyticsService,
-            LlmCostService llmCostService) {
+            LlmCostService llmCostService,
+            DeveloperAnalyticsService developerAnalyticsService,
+            UserRepository userRepository) {
         this.reviewRepository = reviewRepository;
         this.issueRepository = issueRepository;
         this.llmUsageRepository = llmUsageRepository;
         this.trendAnalyticsService = trendAnalyticsService;
         this.llmCostService = llmCostService;
+        this.developerAnalyticsService = developerAnalyticsService;
+        this.userRepository = userRepository;
     }
 
     /**
@@ -446,27 +454,20 @@ public class AnalyticsController {
      */
     @GetMapping("/trends/me")
     public ResponseEntity<TrendResponse> getMyTrends(
-            @AuthenticationPrincipal OAuth2User principal,
+            @AuthenticationPrincipal AuthenticatedUser auth,
             @RequestParam(defaultValue = "6") @Min(1) @Max(24) int months) {
-        if (principal == null) {
+        if (auth == null) {
             return ResponseEntity.status(401).build();
         }
 
-        String odId = principal.getAttribute("id");
-        if (odId == null) {
-            odId = principal.getAttribute("sub");
-        }
-        if (odId == null) {
-            return ResponseEntity.badRequest().build();
-        }
-
         try {
-            UUID userId = UUID.fromString(odId);
-            TrendResponse trends = trendAnalyticsService.getUserTrends(userId, months);
+            var user = userRepository.findByEmail(auth.email());
+            if (user.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            TrendResponse trends = trendAnalyticsService.getUserTrends(user.get().getId(), months);
             return ResponseEntity.ok(trends);
-        } catch (IllegalArgumentException e) {
-            log.warn("Invalid user ID format: {}", odId);
-            return ResponseEntity.badRequest().build();
         } catch (DataAccessException e) {
             log.error("Database error fetching user trends", e);
             return ResponseEntity.ok(TrendResponse.builder()
@@ -536,5 +537,197 @@ public class AnalyticsController {
         if (hours < 24) return hours + " hours ago";
         long days = hours / 24;
         return days + " days ago";
+    }
+
+    // ============ Developer Activity Analytics ============
+
+    /**
+     * Get developer leaderboard with review statistics.
+     */
+    @GetMapping("/developers/leaderboard")
+    public ResponseEntity<List<DeveloperAnalyticsService.DeveloperStats>> getDeveloperLeaderboard(
+            @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit) {
+        try {
+            List<DeveloperAnalyticsService.DeveloperStats> leaderboard =
+                    developerAnalyticsService.getLeaderboard(days, limit);
+            return ResponseEntity.ok(leaderboard);
+        } catch (DataAccessException e) {
+            log.error("Database error fetching developer leaderboard", e);
+            return ResponseEntity.ok(List.of());
+        }
+    }
+
+    /**
+     * Get stats for a specific developer.
+     */
+    @GetMapping("/developers/{userId}")
+    public ResponseEntity<DeveloperAnalyticsService.DeveloperStats> getDeveloperStats(
+            @PathVariable UUID userId,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days) {
+        try {
+            DeveloperAnalyticsService.DeveloperStats stats =
+                    developerAnalyticsService.getDeveloperStats(userId, days);
+            return ResponseEntity.ok(stats);
+        } catch (DataAccessException e) {
+            log.error("Database error fetching developer stats for {}", userId, e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * Get stats for the current logged-in user.
+     */
+    @GetMapping("/developers/me")
+    public ResponseEntity<DeveloperAnalyticsService.DeveloperStats> getMyDeveloperStats(
+            @AuthenticationPrincipal AuthenticatedUser auth,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days) {
+        if (auth == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        try {
+            var user = userRepository.findByEmail(auth.email());
+            if (user.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            DeveloperAnalyticsService.DeveloperStats stats =
+                    developerAnalyticsService.getDeveloperStats(user.get().getId(), days);
+            return ResponseEntity.ok(stats);
+        } catch (DataAccessException e) {
+            log.error("Database error fetching current user stats", e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * Get daily activity for a developer (for charts).
+     */
+    @GetMapping("/developers/{userId}/activity")
+    public ResponseEntity<List<DeveloperAnalyticsService.DailyActivity>> getDeveloperActivity(
+            @PathVariable UUID userId,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days) {
+        try {
+            List<DeveloperAnalyticsService.DailyActivity> activity =
+                    developerAnalyticsService.getDeveloperDailyActivity(userId, days);
+            return ResponseEntity.ok(activity);
+        } catch (DataAccessException e) {
+            log.error("Database error fetching developer activity for {}", userId, e);
+            return ResponseEntity.ok(List.of());
+        }
+    }
+
+    /**
+     * Get summary stats for all developers.
+     */
+    @GetMapping("/developers/summary")
+    public ResponseEntity<DeveloperAnalyticsService.SummaryStats> getDeveloperSummary(
+            @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days) {
+        try {
+            DeveloperAnalyticsService.SummaryStats summary =
+                    developerAnalyticsService.getSummaryStats(days);
+            return ResponseEntity.ok(summary);
+        } catch (DataAccessException e) {
+            log.error("Database error fetching developer summary", e);
+            return ResponseEntity.ok(new DeveloperAnalyticsService.SummaryStats(0L, 0L, 0L, 0L, 0.0));
+        }
+    }
+
+    /**
+     * Get PR size distribution.
+     */
+    @GetMapping("/developers/pr-sizes")
+    public ResponseEntity<List<DeveloperAnalyticsService.SizeDistribution>> getPrSizeDistribution(
+            @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days) {
+        try {
+            List<DeveloperAnalyticsService.SizeDistribution> distribution =
+                    developerAnalyticsService.getPrSizeDistribution(days);
+            return ResponseEntity.ok(distribution);
+        } catch (DataAccessException e) {
+            log.error("Database error fetching PR size distribution", e);
+            return ResponseEntity.ok(List.of());
+        }
+    }
+
+    /**
+     * Get review cycle time trend.
+     */
+    @GetMapping("/developers/cycle-time")
+    public ResponseEntity<List<DeveloperAnalyticsService.CycleTimeTrend>> getCycleTimeTrend(
+            @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days) {
+        try {
+            List<DeveloperAnalyticsService.CycleTimeTrend> trend =
+                    developerAnalyticsService.getCycleTimeTrend(days);
+            return ResponseEntity.ok(trend);
+        } catch (DataAccessException e) {
+            log.error("Database error fetching cycle time trend", e);
+            return ResponseEntity.ok(List.of());
+        }
+    }
+
+    /**
+     * Get feedback statistics (false positive rate, helpful rate).
+     */
+    @GetMapping("/developers/feedback")
+    public ResponseEntity<DeveloperAnalyticsService.FeedbackStats> getFeedbackStats(
+            @RequestParam(defaultValue = "30") @Min(1) @Max(365) int days) {
+        try {
+            DeveloperAnalyticsService.FeedbackStats stats =
+                    developerAnalyticsService.getFeedbackStats(days);
+            return ResponseEntity.ok(stats);
+        } catch (DataAccessException e) {
+            log.error("Database error fetching feedback stats", e);
+            return ResponseEntity.ok(new DeveloperAnalyticsService.FeedbackStats(0L, 0L, 0L, 0.0, 0.0));
+        }
+    }
+
+    /**
+     * Get AI-generated weekly summary for the current user.
+     */
+    @GetMapping("/developers/me/weekly-summary")
+    public ResponseEntity<DeveloperAnalyticsService.WeeklySummary> getMyWeeklySummary(
+            @AuthenticationPrincipal AuthenticatedUser auth,
+            @RequestParam(defaultValue = "7") @Min(1) @Max(30) int days) {
+        if (auth == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        try {
+            var user = userRepository.findByEmail(auth.email());
+            if (user.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            String userName = auth.name() != null ? auth.name() : user.get().getName();
+            DeveloperAnalyticsService.WeeklySummary summary =
+                    developerAnalyticsService.generateWeeklySummary(user.get().getId(), userName, days);
+            return ResponseEntity.ok(summary);
+        } catch (Exception e) {
+            log.error("Error generating weekly summary for user {}", auth.email(), e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * Get AI-generated weekly summary for a specific developer.
+     */
+    @GetMapping("/developers/{userId}/weekly-summary")
+    public ResponseEntity<DeveloperAnalyticsService.WeeklySummary> getDeveloperWeeklySummary(
+            @PathVariable UUID userId,
+            @RequestParam(defaultValue = "7") @Min(1) @Max(30) int days) {
+        try {
+            var user = userRepository.findById(userId);
+            if (user.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            DeveloperAnalyticsService.WeeklySummary summary =
+                    developerAnalyticsService.generateWeeklySummary(userId, user.get().getName(), days);
+            return ResponseEntity.ok(summary);
+        } catch (Exception e) {
+            log.error("Error generating weekly summary for user {}", userId, e);
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }

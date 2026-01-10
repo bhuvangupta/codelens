@@ -200,7 +200,38 @@ export const analytics = {
 	getCategoryBreakdown: (orgId: string, months = 6) =>
 		request<Record<string, number>>(`/analytics/trends/organization/${orgId}/categories?months=${months}`),
 
-	getLlmQuota: () => request<LlmQuotaStatus>('/analytics/llm-quota')
+	getLlmQuota: () => request<LlmQuotaStatus>('/analytics/llm-quota'),
+
+	// Developer Activity Analytics
+	getDeveloperLeaderboard: (days = 30, limit = 10) =>
+		request<DeveloperStats[]>(`/analytics/developers/leaderboard?days=${days}&limit=${limit}`),
+
+	getDeveloperStats: (userId: string, days = 30) =>
+		request<DeveloperStats>(`/analytics/developers/${userId}?days=${days}`),
+
+	getMyDeveloperStats: (days = 30) =>
+		request<DeveloperStats>(`/analytics/developers/me?days=${days}`),
+
+	getDeveloperActivity: (userId: string, days = 30) =>
+		request<DailyActivity[]>(`/analytics/developers/${userId}/activity?days=${days}`),
+
+	getDeveloperSummary: (days = 30) =>
+		request<DeveloperSummaryStats>(`/analytics/developers/summary?days=${days}`),
+
+	getPrSizeDistribution: (days = 30) =>
+		request<SizeDistribution[]>(`/analytics/developers/pr-sizes?days=${days}`),
+
+	getCycleTimeTrend: (days = 30) =>
+		request<CycleTimeTrend[]>(`/analytics/developers/cycle-time?days=${days}`),
+
+	getFeedbackStats: (days = 30) =>
+		request<FeedbackStats>(`/analytics/developers/feedback?days=${days}`),
+
+	getMyWeeklySummary: (days = 7) =>
+		request<WeeklySummary>(`/analytics/developers/me/weekly-summary?days=${days}`),
+
+	getDeveloperWeeklySummary: (userId: string, days = 7) =>
+		request<WeeklySummary>(`/analytics/developers/${userId}/weekly-summary?days=${days}`)
 };
 
 // Settings API
@@ -418,6 +449,69 @@ export interface LlmQuotaStatus {
 	exceeded: boolean;
 	warning: boolean;
 	enforcementEnabled: boolean;
+}
+
+// Developer Analytics Types
+export interface DeveloperStats {
+	rank?: number;
+	userId: string;
+	userName: string;
+	userEmail?: string;
+	avatarUrl?: string;
+	reviewCount: number;
+	linesReviewed: number;
+	issuesFound: number;
+	avgIssuesPerReview: number;
+	criticalIssues: number;
+	highIssues?: number;
+	avgCycleTimeSeconds: number;
+	repositoriesReviewed?: number;
+}
+
+export interface DailyActivity {
+	date: string;
+	reviewCount: number;
+	linesReviewed: number;
+}
+
+export interface DeveloperSummaryStats {
+	totalDevelopers: number;
+	totalReviews: number;
+	totalLinesReviewed: number;
+	totalIssuesFound: number;
+	avgCycleTimeSeconds: number;
+}
+
+export interface SizeDistribution {
+	category: string;
+	count: number;
+}
+
+export interface CycleTimeTrend {
+	date: string;
+	avgCycleTimeSeconds: number;
+}
+
+export interface FeedbackStats {
+	totalWithFeedback: number;
+	falsePositives: number;
+	helpful: number;
+	falsePositiveRate: number;
+	helpfulRate: number;
+}
+
+export interface CategoryBreakdown {
+	category: string;
+	count: number;
+}
+
+export interface WeeklySummary {
+	developerName: string;
+	period: string;
+	summary: string;
+	highlights: string[];
+	issueCategories: CategoryBreakdown[];
+	primaryRepository: string | null;
 }
 
 export interface IssueAnalytics {

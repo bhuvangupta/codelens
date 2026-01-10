@@ -58,4 +58,15 @@ public interface ReviewIssueRepository extends JpaRepository<ReviewIssue, UUID> 
         LIMIT :limit
         """, nativeQuery = true)
     List<Object[]> findTopCategoriesByCount(@Param("since") LocalDateTime since, @Param("limit") int limit);
+
+    // ============ Feedback Analytics ============
+
+    @Query("SELECT COUNT(ri) FROM ReviewIssue ri WHERE ri.feedbackAt >= :since")
+    long countByFeedbackAtAfter(@Param("since") LocalDateTime since);
+
+    @Query("SELECT COUNT(ri) FROM ReviewIssue ri WHERE ri.isFalsePositive = true AND ri.feedbackAt >= :since")
+    long countByIsFalsePositiveTrueAndFeedbackAtAfter(@Param("since") LocalDateTime since);
+
+    @Query("SELECT COUNT(ri) FROM ReviewIssue ri WHERE ri.isHelpful = true AND ri.feedbackAt >= :since")
+    long countByIsHelpfulTrueAndFeedbackAtAfter(@Param("since") LocalDateTime since);
 }
