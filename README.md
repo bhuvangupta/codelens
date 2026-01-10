@@ -19,6 +19,7 @@ CodeLens combines multiple LLM providers with static analysis to provide compreh
 - **Config Auto-Detection**: Automatically uses your `.eslintrc`, `pom.xml`, etc.
 - **Ticket Scope Validation**: Paste ticket/story content to verify PR changes align with requirements
 - **Continuous Learning**: Mark issues as helpful or false positive - CodeLens learns and auto-suppresses noisy rules per repository
+- **Developer Activity Dashboard**: Leaderboard, daily activity charts, PR size distribution, and AI-generated weekly summaries
 
 ## Screenshots
 
