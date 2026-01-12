@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { reviews } from '$lib/api/client';
-	import type { Review } from '$lib/api/client';
+	import type { Review, PagedResponse } from '$lib/api/client';
 
 	let reviewsList: Review[] = [];
 	let loading = true;
@@ -16,17 +16,47 @@
 	let repositories: string[] = [];
 	let selectedRepo = '';
 
+	// Pagination state
+	let currentPage = 0;
+	let pageSize = 20;
+	let totalElements = 0;
+	let totalPages = 0;
+	let hasNext = false;
+	let hasPrevious = false;
+
 	async function loadReviews() {
 		try {
 			const repo = selectedRepo || undefined;
+			let response: PagedResponse<Review>;
 			if (viewMode === 'my') {
-				reviewsList = await reviews.getMy(repo);
+				response = await reviews.getMyPaged(currentPage, pageSize, repo);
 			} else {
-				reviewsList = await reviews.getRecent(50, repo);
+				response = await reviews.getRecentPaged(currentPage, pageSize, repo);
 			}
+			reviewsList = response.content;
+			totalElements = response.totalElements;
+			totalPages = response.totalPages;
+			hasNext = response.hasNext;
+			hasPrevious = response.hasPrevious;
 		} catch (e) {
 			console.error('Failed to refresh reviews:', e);
 		}
+	}
+
+	function goToPage(page: number) {
+		if (page >= 0 && page < totalPages) {
+			currentPage = page;
+			loading = true;
+			loadReviews().finally(() => loading = false);
+		}
+	}
+
+	function nextPage() {
+		if (hasNext) goToPage(currentPage + 1);
+	}
+
+	function prevPage() {
+		if (hasPrevious) goToPage(currentPage - 1);
 	}
 
 	async function loadRepositories() {
@@ -60,12 +90,14 @@
 	async function handleViewModeChange(mode: 'my' | 'all') {
 		viewMode = mode;
 		selectedRepo = '';
+		currentPage = 0; // Reset to first page
 		loading = true;
 		await Promise.all([loadReviews(), loadRepositories()]);
 		loading = false;
 	}
 
 	async function handleRepoChange() {
+		currentPage = 0; // Reset to first page
 		loading = true;
 		await loadReviews();
 		loading = false;
@@ -277,5 +309,55 @@
 				</div>
 			{/each}
 		</div>
+
+		<!-- Pagination -->
+		{#if totalPages > 1}
+			<div class="flex items-center justify-between mt-6 px-2">
+				<div class="text-sm text-gray-500">
+					Showing {currentPage * pageSize + 1} - {Math.min((currentPage + 1) * pageSize, totalElements)} of {totalElements} reviews
+				</div>
+				<div class="flex items-center gap-2">
+					<button
+						on:click={prevPage}
+						disabled={!hasPrevious}
+						class="px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-gray-100 text-gray-700 hover:bg-gray-200"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+						</svg>
+					</button>
+
+					{#each Array(Math.min(totalPages, 7)) as _, i}
+						{@const pageNum = totalPages <= 7 ? i :
+							currentPage < 3 ? i :
+							currentPage > totalPages - 4 ? totalPages - 7 + i :
+							currentPage - 3 + i}
+						{#if pageNum >= 0 && pageNum < totalPages}
+							<button
+								on:click={() => goToPage(pageNum)}
+								class="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+								class:bg-primary-700={currentPage === pageNum}
+								class:text-white={currentPage === pageNum}
+								class:bg-gray-100={currentPage !== pageNum}
+								class:text-gray-700={currentPage !== pageNum}
+								class:hover:bg-gray-200={currentPage !== pageNum}
+							>
+								{pageNum + 1}
+							</button>
+						{/if}
+					{/each}
+
+					<button
+						on:click={nextPage}
+						disabled={!hasNext}
+						class="px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-gray-100 text-gray-700 hover:bg-gray-200"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+						</svg>
+					</button>
+				</div>
+			</div>
+		{/if}
 	{/if}
 </div>

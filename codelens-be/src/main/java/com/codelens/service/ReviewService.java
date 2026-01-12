@@ -847,6 +847,34 @@ public class ReviewService implements ReviewExecutor {
     }
 
     /**
+     * Get paginated reviews for organization (All Reviews tab)
+     */
+    public org.springframework.data.domain.Page<Review> getRecentReviewsPaged(
+            int page, int size, String repositoryName, UUID organizationId) {
+        var pageable = org.springframework.data.domain.PageRequest.of(page, size);
+        if (organizationId != null) {
+            if (repositoryName != null && !repositoryName.isEmpty()) {
+                return reviewRepository.findByOrganizationAndRepositoryNamePaged(organizationId, repositoryName, pageable);
+            }
+            return reviewRepository.findByOrganizationPaged(organizationId, pageable);
+        }
+        // Fallback - shouldn't happen in production
+        return org.springframework.data.domain.Page.empty(pageable);
+    }
+
+    /**
+     * Get paginated reviews for a user (My Reviews tab)
+     */
+    public org.springframework.data.domain.Page<Review> getReviewsForUserPaged(
+            UUID userId, int page, int size, String repositoryName) {
+        var pageable = org.springframework.data.domain.PageRequest.of(page, size);
+        if (repositoryName != null && !repositoryName.isEmpty()) {
+            return reviewRepository.findByUserIdAndRepositoryNamePaged(userId, repositoryName, pageable);
+        }
+        return reviewRepository.findByUserIdPaged(userId, pageable);
+    }
+
+    /**
      * Get distinct repository names filtered by organization
      */
     public List<String> getDistinctRepositoryNames(UUID organizationId) {
