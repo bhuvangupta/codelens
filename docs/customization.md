@@ -155,3 +155,92 @@ public class MyClass {
 3. **Update regularly**: Keep rules in sync with your team's standards
 4. **Use examples**: Include code examples in your rules for clarity
 5. **Prioritize**: List most important rules first (file may be truncated)
+
+---
+
+## Email Notifications
+
+CodeLens can send email notifications when reviews complete, fail, or find critical issues.
+
+### Setup
+
+1. Configure SMTP in your `.env` file:
+
+```bash
+SMTP_ENABLED=true
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM=noreply@yourdomain.com
+SMTP_FROM_NAME=CodeLens
+CODELENS_BASE_URL=https://codelens.yourdomain.com
+```
+
+2. Users enable email notifications in **Settings > Notifications**
+
+### Email Types
+
+| Email | Trigger | Description |
+|-------|---------|-------------|
+| Review Completed | Review finishes successfully | Shows issue count and critical issues |
+| Review Failed | Review encounters an error | Shows error message |
+| Critical Issues | Critical issues found | Highlights critical count with alert |
+
+### Customizing Email Templates
+
+Email templates are Thymeleaf HTML files located at:
+
+```
+codelens-be/src/main/resources/templates/email/
+├── base.html              # Base template (reference)
+├── review-completed.html  # Green header, issue stats
+├── review-failed.html     # Red header, error details
+└── critical-issues.html   # Red alert banner
+```
+
+#### Template Variables
+
+| Variable | Available In | Description |
+|----------|--------------|-------------|
+| `${userName}` | All | User's display name |
+| `${prTitle}` | All | Pull request title |
+| `${reviewUrl}` | All | Link to review page |
+| `${baseUrl}` | All | Base URL for settings links |
+| `${issuesFound}` | review-completed | Total issues found |
+| `${criticalIssues}` | review-completed | Critical issue count |
+| `${criticalCount}` | critical-issues | Critical issue count |
+| `${errorMessage}` | review-failed | Error message |
+
+#### Example Customization
+
+To change the header color from green to blue in `review-completed.html`:
+
+```html
+<!-- Before -->
+<td style="background-color: #059669; padding: 24px 32px;">
+
+<!-- After -->
+<td style="background-color: #2563eb; padding: 24px 32px;">
+```
+
+Changes take effect after restarting the backend.
+
+### Gmail SMTP Setup
+
+For Gmail, use an App Password (not your regular password):
+
+1. Enable 2-Factor Authentication on your Google account
+2. Go to [Google App Passwords](https://myaccount.google.com/apppasswords)
+3. Generate a new app password for "Mail"
+4. Use this password as `SMTP_PASSWORD`
+
+### Other SMTP Providers
+
+| Provider | Host | Port |
+|----------|------|------|
+| Gmail | smtp.gmail.com | 587 |
+| Outlook | smtp.office365.com | 587 |
+| SendGrid | smtp.sendgrid.net | 587 |
+| Mailgun | smtp.mailgun.org | 587 |
+| Amazon SES | email-smtp.{region}.amazonaws.com | 587 |
