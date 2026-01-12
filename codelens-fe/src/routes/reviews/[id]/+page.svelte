@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 	import { reviews } from '$lib/api/client';
 	import type { ReviewDetail, ReviewIssue, ReviewStatus, OptimizationStatus, DiffResponse, FileDiff } from '$lib/api/client';
-	import { marked } from 'marked';
 	import DiffViewer from '$lib/components/DiffViewer.svelte';
 
 	let review: ReviewDetail | null = null;
@@ -37,15 +37,24 @@
 	let diffLoading = false;
 	let diffError: string | null = null;
 
-	// Configure marked for safe rendering
-	marked.setOptions({
-		breaks: true,
-		gfm: true
-	});
+	// Marked instance - loaded dynamically on client only
+	let markedInstance: typeof import('marked') | null = null;
+
+	// Load marked on client side only
+	if (browser) {
+		import('marked').then((mod) => {
+			markedInstance = mod;
+			mod.marked.setOptions({
+				breaks: true,
+				gfm: true
+			});
+		});
+	}
 
 	function renderMarkdown(text: string): string {
 		if (!text) return '';
-		return marked.parse(text) as string;
+		if (!markedInstance) return text; // Fallback to plain text during SSR
+		return markedInstance.marked.parse(text) as string;
 	}
 
 	/**
