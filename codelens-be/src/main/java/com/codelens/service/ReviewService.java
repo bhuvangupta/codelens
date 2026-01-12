@@ -178,19 +178,20 @@ public class ReviewService implements ReviewExecutor {
         review.setCreatedAt(LocalDateTime.now());
 
         // Find or create user from session info
+        User user = null;
         if (sessionUser != null && sessionUser.providerId() != null) {
-            User user = findOrCreateUser(sessionUser);
+            user = findOrCreateUser(sessionUser);
             review.setUser(user);
         }
 
-        // Get or create repository
-        Repository repository = getOrCreateRepository(parsed.owner(), parsed.repo(), parsed.provider());
+        // Get or create repository - use user's org if available to avoid duplicate orgs
+        Repository repository = getOrCreateRepository(parsed.owner(), parsed.repo(), parsed.provider(), user);
         review.setRepository(repository);
 
         // Auto-associate user with organization only if email domain matches org name
         // Uses membership service to handle auto-approve vs pending request
         if (review.getUser() != null && repository.getOrganization() != null) {
-            User user = review.getUser();
+            User reviewUser = review.getUser();
             if (user.getOrganization() == null) {
                 Organization org = repository.getOrganization();
                 if (isEmailDomainMatchingOrg(user.getEmail(), org.getName())) {
@@ -631,7 +632,14 @@ public class ReviewService implements ReviewExecutor {
     private void trackLlmUsage(Review review, ReviewEngine.ReviewResult result) {
         LlmUsage usage = new LlmUsage();
         usage.setReview(review);
-        usage.setOrganization(review.getRepository() != null ? review.getRepository().getOrganization() : null);
+        // Use user's organization for consistency with org-filtered analytics queries
+        Organization org = null;
+        if (review.getUser() != null && review.getUser().getOrganization() != null) {
+            org = review.getUser().getOrganization();
+        } else if (review.getRepository() != null) {
+            org = review.getRepository().getOrganization();
+        }
+        usage.setOrganization(org);
         usage.setProvider(result.llmProvider());
         usage.setModel(result.llmProvider()); // Could be enhanced to track specific model
         usage.setTaskType("review");
@@ -659,6 +667,16 @@ public class ReviewService implements ReviewExecutor {
      */
     @Transactional
     protected Repository getOrCreateRepository(String owner, String repoName, GitProvider provider) {
+        return getOrCreateRepository(owner, repoName, provider, null);
+    }
+
+    /**
+     * Get existing repository or create a new one with metadata from Git provider API.
+     * If user has an organization, uses that instead of creating from GitHub org name.
+     * This prevents duplicate orgs when GitHub org name differs from email domain org.
+     */
+    @Transactional
+    protected Repository getOrCreateRepository(String owner, String repoName, GitProvider provider, User user) {
         String fullName = owner + "/" + repoName;
 
         // Try to find existing repository
@@ -668,8 +686,15 @@ public class ReviewService implements ReviewExecutor {
             return existingRepo.get();
         }
 
-        // Need to create repository - first get or create organization
-        Organization organization = getOrCreateOrganization(owner);
+        // Determine organization: prefer user's org, fall back to creating from GitHub org name
+        Organization organization;
+        if (user != null && user.getOrganization() != null) {
+            organization = user.getOrganization();
+            log.info("Using user's organization '{}' for new repository {} (GitHub org: {})",
+                organization.getName(), fullName, owner);
+        } else {
+            organization = getOrCreateOrganization(owner);
+        }
 
         // Fetch repository info from Git provider API
         RepositoryInfo repoInfo = null;
@@ -696,7 +721,8 @@ public class ReviewService implements ReviewExecutor {
             .build();
 
         repository = repositoryRepository.save(repository);
-        log.info("Created new repository: {} (id={}, language={})", fullName, repository.getId(), repository.getLanguage());
+        log.info("Created new repository: {} (id={}, org={}, language={})",
+            fullName, repository.getId(), organization.getName(), repository.getLanguage());
 
         return repository;
     }
@@ -918,18 +944,19 @@ public class ReviewService implements ReviewExecutor {
         review.setCreatedAt(LocalDateTime.now());
 
         // Find or create user from session info
+        User user = null;
         if (sessionUser != null && sessionUser.providerId() != null) {
-            User user = findOrCreateUser(sessionUser);
+            user = findOrCreateUser(sessionUser);
             review.setUser(user);
         }
 
-        // Get or create repository
-        Repository repository = getOrCreateRepository(parsed.owner(), parsed.repo(), parsed.provider());
+        // Get or create repository - use user's org if available to avoid duplicate orgs
+        Repository repository = getOrCreateRepository(parsed.owner(), parsed.repo(), parsed.provider(), user);
         review.setRepository(repository);
 
         // Auto-associate user with organization only if email domain matches org name
         if (review.getUser() != null && repository.getOrganization() != null) {
-            User user = review.getUser();
+            User reviewUser = review.getUser();
             if (user.getOrganization() == null) {
                 Organization org = repository.getOrganization();
                 if (isEmailDomainMatchingOrg(user.getEmail(), org.getName())) {
