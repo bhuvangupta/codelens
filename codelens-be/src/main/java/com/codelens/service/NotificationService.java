@@ -24,6 +24,7 @@ public class NotificationService {
     private final NotificationPreferenceRepository preferenceRepository;
     private final UserRepository userRepository;
     private final WebhookService webhookService;
+    private final EmailService emailService;
 
     /**
      * Get notifications for a user
@@ -104,16 +105,28 @@ public class NotificationService {
         if (review.getUser() == null) return;
 
         NotificationPreference prefs = getPreferencesForUser(review.getUser().getId());
-        if (!Boolean.TRUE.equals(prefs.getInAppEnabled()) || !Boolean.TRUE.equals(prefs.getReviewCompleted())) {
-            return;
+
+        // In-app notification
+        if (Boolean.TRUE.equals(prefs.getInAppEnabled()) && Boolean.TRUE.equals(prefs.getReviewCompleted())) {
+            String title = "Review Completed";
+            String message = String.format("Review for PR #%d (%s) has completed. Found %d issues.",
+                    review.getPrNumber(), review.getPrTitle(), review.getIssuesFound());
+
+            createNotification(review.getUser(), Notification.NotificationType.REVIEW_COMPLETED,
+                    title, message, "review", review.getId());
         }
 
-        String title = "Review Completed";
-        String message = String.format("Review for PR #%d (%s) has completed. Found %d issues.",
-                review.getPrNumber(), review.getPrTitle(), review.getIssuesFound());
-
-        createNotification(review.getUser(), Notification.NotificationType.REVIEW_COMPLETED,
-                title, message, "review", review.getId());
+        // Email notification
+        if (Boolean.TRUE.equals(prefs.getEmailEnabled()) && Boolean.TRUE.equals(prefs.getReviewCompleted())) {
+            emailService.sendReviewCompletedEmail(
+                    review.getUser().getEmail(),
+                    review.getUser().getName(),
+                    review.getId().toString(),
+                    review.getPrTitle(),
+                    review.getIssuesFound() != null ? review.getIssuesFound() : 0,
+                    review.getCriticalIssues() != null ? review.getCriticalIssues() : 0
+            );
+        }
 
         // Trigger webhooks
         if (review.getRepository() != null && review.getRepository().getOrganization() != null) {
@@ -135,17 +148,28 @@ public class NotificationService {
         if (review.getUser() == null) return;
 
         NotificationPreference prefs = getPreferencesForUser(review.getUser().getId());
-        if (!Boolean.TRUE.equals(prefs.getInAppEnabled()) || !Boolean.TRUE.equals(prefs.getReviewFailed())) {
-            return;
+
+        // In-app notification
+        if (Boolean.TRUE.equals(prefs.getInAppEnabled()) && Boolean.TRUE.equals(prefs.getReviewFailed())) {
+            String title = "Review Failed";
+            String message = String.format("Review for PR #%d (%s) has failed. %s",
+                    review.getPrNumber(), review.getPrTitle(),
+                    review.getErrorMessage() != null ? review.getErrorMessage() : "");
+
+            createNotification(review.getUser(), Notification.NotificationType.REVIEW_FAILED,
+                    title, message, "review", review.getId());
         }
 
-        String title = "Review Failed";
-        String message = String.format("Review for PR #%d (%s) has failed. %s",
-                review.getPrNumber(), review.getPrTitle(),
-                review.getErrorMessage() != null ? review.getErrorMessage() : "");
-
-        createNotification(review.getUser(), Notification.NotificationType.REVIEW_FAILED,
-                title, message, "review", review.getId());
+        // Email notification
+        if (Boolean.TRUE.equals(prefs.getEmailEnabled()) && Boolean.TRUE.equals(prefs.getReviewFailed())) {
+            emailService.sendReviewFailedEmail(
+                    review.getUser().getEmail(),
+                    review.getUser().getName(),
+                    review.getId().toString(),
+                    review.getPrTitle(),
+                    review.getErrorMessage()
+            );
+        }
 
         // Trigger webhooks
         if (review.getRepository() != null && review.getRepository().getOrganization() != null) {
@@ -161,17 +185,28 @@ public class NotificationService {
         if (review.getUser() == null) return;
 
         NotificationPreference prefs = getPreferencesForUser(review.getUser().getId());
-        if (!Boolean.TRUE.equals(prefs.getInAppEnabled()) || !Boolean.TRUE.equals(prefs.getCriticalIssues())) {
-            return;
+
+        // In-app notification
+        if (Boolean.TRUE.equals(prefs.getInAppEnabled()) && Boolean.TRUE.equals(prefs.getCriticalIssues())) {
+            String title = "Critical Issues Found";
+            String message = String.format("PR #%d (%s) has %d critical issue%s that require immediate attention.",
+                    review.getPrNumber(), review.getPrTitle(), review.getCriticalIssues(),
+                    review.getCriticalIssues() > 1 ? "s" : "");
+
+            createNotification(review.getUser(), Notification.NotificationType.CRITICAL_ISSUES_FOUND,
+                    title, message, "review", review.getId());
         }
 
-        String title = "Critical Issues Found";
-        String message = String.format("PR #%d (%s) has %d critical issue%s that require immediate attention.",
-                review.getPrNumber(), review.getPrTitle(), review.getCriticalIssues(),
-                review.getCriticalIssues() > 1 ? "s" : "");
-
-        createNotification(review.getUser(), Notification.NotificationType.CRITICAL_ISSUES_FOUND,
-                title, message, "review", review.getId());
+        // Email notification
+        if (Boolean.TRUE.equals(prefs.getEmailEnabled()) && Boolean.TRUE.equals(prefs.getCriticalIssues())) {
+            emailService.sendCriticalIssuesEmail(
+                    review.getUser().getEmail(),
+                    review.getUser().getName(),
+                    review.getId().toString(),
+                    review.getPrTitle(),
+                    review.getCriticalIssues()
+            );
+        }
 
         // Trigger webhooks
         if (review.getRepository() != null && review.getRepository().getOrganization() != null) {
