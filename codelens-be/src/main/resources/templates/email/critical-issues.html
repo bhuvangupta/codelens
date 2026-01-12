@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Critical Issues Found</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
+        <tr>
+            <td align="center">
+                <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background-color: #dc2626; padding: 24px 32px;">
+                            <table width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td>
+                                        <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">Critical Issues Found</h1>
+                                    </td>
+                                    <td align="right">
+                                        <span style="color: #fecaca; font-size: 14px;">CodeLens</span>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Alert Banner -->
+                    <tr>
+                        <td style="background-color: #fef2f2; padding: 16px 32px; border-bottom: 1px solid #fecaca;">
+                            <table width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td width="40" valign="top">
+                                        <div style="width: 32px; height: 32px; background-color: #dc2626; border-radius: 50%; text-align: center; line-height: 32px; color: #ffffff; font-weight: bold;">!</div>
+                                    </td>
+                                    <td style="padding-left: 12px;">
+                                        <p style="margin: 0; color: #991b1b; font-size: 14px; font-weight: 600;">Immediate Attention Required</p>
+                                        <p style="margin: 4px 0 0; color: #b91c1c; font-size: 13px;">This review found critical security or bug issues that should be addressed before merging.</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 32px;">
+                            <p style="margin: 0 0 16px; color: #374151; font-size: 16px;">Hi <span th:text="${userName}">there</span>,</p>
+                            <p style="margin: 0 0 20px; color: #374151; font-size: 16px;">Your code review for <strong th:text="${prTitle}">PR Title</strong> found critical issues that require immediate attention.</p>
+
+                            <!-- Critical Count Box -->
+                            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #fef2f2; border: 2px solid #dc2626; border-radius: 8px; margin-bottom: 24px;">
+                                <tr>
+                                    <td style="padding: 24px; text-align: center;">
+                                        <p style="margin: 0; color: #991b1b; font-size: 14px; text-transform: uppercase; font-weight: 600;">Critical Issues</p>
+                                        <p style="margin: 8px 0 0; color: #dc2626; font-size: 48px; font-weight: 700;" th:text="${criticalCount}">0</p>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <p style="margin: 0 0 24px; color: #6b7280; font-size: 14px;">Please review these issues as soon as possible. Critical issues may include security vulnerabilities, potential bugs, or other high-priority concerns.</p>
+
+                            <a th:href="${reviewUrl}" style="display: inline-block; background-color: #dc2626; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 14px;">View Critical Issues</a>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 24px 32px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">
+                            <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center;">
+                                This email was sent by CodeLens.
+                                <a th:href="${baseUrl + '/settings/notifications'}" style="color: #dc2626;">Manage notification preferences</a>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Review Completed</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
+        <tr>
+            <td align="center">
+                <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background-color: #059669; padding: 24px 32px;">
+                            <table width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td>
+                                        <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">Review Completed</h1>
+                                    </td>
+                                    <td align="right">
+                                        <span style="color: #d1fae5; font-size: 14px;">CodeLens</span>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 32px;">
+                            <p style="margin: 0 0 16px; color: #374151; font-size: 16px;">Hi <span th:text="${userName}">there</span>,</p>
+                            <p style="margin: 0 0 20px; color: #374151; font-size: 16px;">Your code review for <strong th:text="${prTitle}">PR Title</strong> has been completed.</p>
+
+                            <!-- Stats Box -->
+                            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 8px; margin-bottom: 24px;">
+                                <tr>
+                                    <td style="padding: 20px;">
+                                        <table width="100%" cellpadding="0" cellspacing="0">
+                                            <tr>
+                                                <td width="50%" style="text-align: center; padding: 10px;">
+                                                    <p style="margin: 0; color: #6b7280; font-size: 12px; text-transform: uppercase;">Total Issues</p>
+                                                    <p style="margin: 4px 0 0; color: #374151; font-size: 28px; font-weight: 600;" th:text="${issuesFound}">0</p>
+                                                </td>
+                                                <td width="50%" style="text-align: center; padding: 10px; border-left: 1px solid #e5e7eb;">
+                                                    <p style="margin: 0; color: #6b7280; font-size: 12px; text-transform: uppercase;">Critical</p>
+                                                    <p style="margin: 4px 0 0; font-size: 28px; font-weight: 600;" th:style="${criticalIssues > 0 ? 'color: #dc2626;' : 'color: #059669;'}" th:text="${criticalIssues}">0</p>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <a th:href="${reviewUrl}" style="display: inline-block; background-color: #059669; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 500; font-size: 14px;">View Review</a>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 24px 32px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">
+                            <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center;">
+                                This email was sent by CodeLens.
+                                <a th:href="${baseUrl + '/settings/notifications'}" style="color: #059669;">Manage notification preferences</a>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
