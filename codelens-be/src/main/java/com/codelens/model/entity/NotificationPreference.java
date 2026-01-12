@@ -23,7 +23,7 @@ public class NotificationPreference {
     private User user;
 
     @Builder.Default
-    private Boolean emailEnabled = true;
+    private Boolean emailEnabled = false;  // Email sending not implemented yet
 
     @Builder.Default
     private Boolean inAppEnabled = true;
