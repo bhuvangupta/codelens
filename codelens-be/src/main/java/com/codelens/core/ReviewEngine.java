@@ -582,8 +582,9 @@ public class ReviewEngine {
                 outputTokens = response.outputTokens();
 
                 // Parse security scan response (same format as review)
+                // Filter to changed lines to prevent LLM hallucinations for unchanged code
                 parseReviewResponse(response.content(), file.filename(), prInfo.headCommitSha(),
-                    issues, comments, ignoredLines);
+                    issues, comments, ignoredLines, changedLines);
 
                 log.debug("Security scan for {} used {} input, {} output tokens",
                     file.filename(), inputTokens, outputTokens);
@@ -602,8 +603,9 @@ public class ReviewEngine {
                 outputTokens = response.outputTokens();
 
                 // Parse LLM response into issues and comments
+                // Filter to changed lines to prevent LLM hallucinations for unchanged code
                 parseReviewResponse(response.content(), file.filename(), prInfo.headCommitSha(),
-                    issues, comments, ignoredLines);
+                    issues, comments, ignoredLines, changedLines);
 
                 log.debug("LLM review for {} used {} input, {} output tokens (mode: {})",
                     file.filename(), inputTokens, outputTokens, extraction.mode());
@@ -924,7 +926,8 @@ public class ReviewEngine {
             String commitSha,
             List<ReviewIssue> issues,
             List<ReviewComment> comments,
-            Set<Integer> ignoredLines) {
+            Set<Integer> ignoredLines,
+            Set<Integer> changedLines) {
 
         // Extract JSON from response (handle markdown code blocks)
         String json = extractJson(response);
@@ -943,6 +946,12 @@ public class ReviewEngine {
 
                     // Skip if line is ignored
                     if (ignoredLines.contains(lineNum)) {
+                        continue;
+                    }
+
+                    // Skip if line wasn't actually changed (LLM hallucination)
+                    if (changedLines != null && !changedLines.isEmpty() && !changedLines.contains(lineNum)) {
+                        log.debug("Filtering out AI issue at line {} in {} - not a changed line", lineNum, filename);
                         continue;
                     }
 
@@ -1009,6 +1018,11 @@ public class ReviewEngine {
                             if (ignoredLines.contains(lineNum)) {
                                 continue;
                             }
+                            // Skip if line wasn't actually changed (LLM hallucination)
+                            if (changedLines != null && !changedLines.isEmpty() && !changedLines.contains(lineNum)) {
+                                log.debug("Filtering out AI issue at line {} in {} - not a changed line", lineNum, filename);
+                                continue;
+                            }
 
                             String severityStr = (String) issueData.getOrDefault("severity", "LOW");
                             String categoryStr = (String) issueData.getOrDefault("category", "SMELL");
@@ -1048,7 +1062,7 @@ public class ReviewEngine {
                 }
             }
             // Fallback to simple text parsing for backwards compatibility
-            parseReviewResponseLegacy(response, filename, commitSha, issues, comments, ignoredLines);
+            parseReviewResponseLegacy(response, filename, commitSha, issues, comments, ignoredLines, changedLines);
         }
     }
 
@@ -1201,7 +1215,8 @@ public class ReviewEngine {
             String commitSha,
             List<ReviewIssue> issues,
             List<ReviewComment> comments,
-            Set<Integer> ignoredLines) {
+            Set<Integer> ignoredLines,
+            Set<Integer> changedLines) {
 
         String[] lines = response.split("\n");
 
@@ -1215,6 +1230,12 @@ public class ReviewEngine {
                     int lineNum = Integer.parseInt(line.substring(5, colonIdx).trim());
 
                     if (ignoredLines.contains(lineNum)) {
+                        continue;
+                    }
+
+                    // Skip if line wasn't actually changed (LLM hallucination)
+                    if (changedLines != null && !changedLines.isEmpty() && !changedLines.contains(lineNum)) {
+                        log.debug("Filtering out AI issue at line {} in {} - not a changed line", lineNum, filename);
                         continue;
                     }
 
@@ -1837,8 +1858,9 @@ public class ReviewEngine {
                 LlmProvider.LlmResponse response = llmRouter.generate(securityPrompt, "security");
                 inputTokens = response.inputTokens();
                 outputTokens = response.outputTokens();
+                // Filter to changed lines to prevent LLM hallucinations
                 parseReviewResponse(response.content(), file.filename(), request.commitSha(),
-                    issues, comments, ignoredLines);
+                    issues, comments, ignoredLines, changedLines);
             } catch (Exception e) {
                 log.error("Error running security scan for {}", file.filename(), e);
             }
@@ -1849,8 +1871,9 @@ public class ReviewEngine {
                 LlmProvider.LlmResponse response = llmRouter.generate(prompt, "review");
                 inputTokens = response.inputTokens();
                 outputTokens = response.outputTokens();
+                // Filter to changed lines to prevent LLM hallucinations
                 parseReviewResponse(response.content(), file.filename(), request.commitSha(),
-                    issues, comments, ignoredLines);
+                    issues, comments, ignoredLines, changedLines);
                 log.debug("LLM review for {} used {} input, {} output tokens",
                     file.filename(), inputTokens, outputTokens);
             } catch (Exception e) {
