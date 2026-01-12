@@ -37,8 +37,31 @@ spring:
       write-dates-as-timestamps: false
     default-property-inclusion: non_null
 
+  # Email / SMTP Configuration
+  mail:
+    enabled: ${SMTP_ENABLED:false}
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    from: ${SMTP_FROM:noreply@codelens.dev}
+    from-name: ${SMTP_FROM_NAME:CodeLens}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
 # CodeLens Configuration
 codelens:
+  # Base URL for email links (typically same as frontend URL)
+  base-url: ${CODELENS_BASE_URL:http://localhost:5174}
+
   # Frontend URL for generating review links in PR comments
   frontend-url: ${FRONTEND_URL:http://localhost:5174}
 
