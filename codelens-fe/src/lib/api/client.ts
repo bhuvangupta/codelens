@@ -144,9 +144,21 @@ export const reviews = {
 		return request<Review[]>(`/reviews/recent?${params}`);
 	},
 
+	getRecentPaged: (page = 0, size = 20, repository?: string) => {
+		const params = new URLSearchParams({ page: String(page), size: String(size) });
+		if (repository) params.append('repository', repository);
+		return request<PagedResponse<Review>>(`/reviews/recent/paged?${params}`);
+	},
+
 	getMy: (repository?: string) => {
 		const params = repository ? `?repository=${encodeURIComponent(repository)}` : '';
 		return request<Review[]>(`/reviews/my${params}`);
+	},
+
+	getMyPaged: (page = 0, size = 20, repository?: string) => {
+		const params = new URLSearchParams({ page: String(page), size: String(size) });
+		if (repository) params.append('repository', repository);
+		return request<PagedResponse<Review>>(`/reviews/my/paged?${params}`);
 	},
 
 	getRepositories: (all = false) => request<string[]>(`/reviews/repositories?all=${all}`),
@@ -290,6 +302,16 @@ export const llm = {
 };
 
 // Types
+export interface PagedResponse<T> {
+	content: T[];
+	page: number;
+	size: number;
+	totalElements: number;
+	totalPages: number;
+	hasNext: boolean;
+	hasPrevious: boolean;
+}
+
 export interface Review {
 	id: string;
 	prUrl: string | null;

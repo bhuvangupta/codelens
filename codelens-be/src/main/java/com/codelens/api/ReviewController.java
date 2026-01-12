@@ -344,6 +344,28 @@ public class ReviewController {
     }
 
     /**
+     * Get paginated recent reviews (all users in same organization)
+     */
+    @GetMapping("/recent/paged")
+    public ResponseEntity<com.codelens.api.dto.PagedReviewResponse> getRecentReviewsPaged(
+            @AuthenticationPrincipal AuthenticatedUser auth,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(required = false) String repository) {
+
+        UUID orgId = null;
+        if (auth != null) {
+            User user = userRepository.findByEmail(auth.email()).orElse(null);
+            if (user != null && user.getOrganization() != null) {
+                orgId = user.getOrganization().getId();
+            }
+        }
+
+        var reviewsPage = reviewService.getRecentReviewsPaged(page, size, repository, orgId);
+        return ResponseEntity.ok(com.codelens.api.dto.PagedReviewResponse.from(reviewsPage));
+    }
+
+    /**
      * Get reviews for current user with optional repository filter
      */
     @GetMapping("/my")
@@ -359,6 +381,28 @@ public class ReviewController {
         }
         List<Review> reviews = reviewService.getReviewsForUser(user.get().getId(), repository);
         return ResponseEntity.ok(reviews.stream().map(ReviewResponse::from).toList());
+    }
+
+    /**
+     * Get paginated reviews for current user
+     */
+    @GetMapping("/my/paged")
+    public ResponseEntity<com.codelens.api.dto.PagedReviewResponse> getMyReviewsPaged(
+            @AuthenticationPrincipal AuthenticatedUser auth,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(required = false) String repository) {
+        if (auth == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        Optional<User> userOpt = userRepository.findByEmail(auth.email());
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.ok(com.codelens.api.dto.PagedReviewResponse.from(
+                org.springframework.data.domain.Page.empty()));
+        }
+        var reviewsPage = reviewService.getReviewsForUserPaged(
+            userOpt.get().getId(), page, size, repository);
+        return ResponseEntity.ok(com.codelens.api.dto.PagedReviewResponse.from(reviewsPage));
     }
 
     /**

@@ -66,6 +66,20 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
     @Query("SELECT r FROM Review r WHERE r.user.organization.id = :orgId AND r.repositoryName = :repoName ORDER BY r.createdAt DESC")
     List<Review> findByOrganizationAndRepositoryName(@Param("orgId") UUID orgId, @Param("repoName") String repoName, Pageable pageable);
 
+    // ============ Paginated queries for review list (returns Page with total count) ============
+
+    @Query("SELECT r FROM Review r WHERE r.user.organization.id = :orgId ORDER BY r.createdAt DESC")
+    Page<Review> findByOrganizationPaged(@Param("orgId") UUID orgId, Pageable pageable);
+
+    @Query("SELECT r FROM Review r WHERE r.user.organization.id = :orgId AND r.repositoryName = :repoName ORDER BY r.createdAt DESC")
+    Page<Review> findByOrganizationAndRepositoryNamePaged(@Param("orgId") UUID orgId, @Param("repoName") String repoName, Pageable pageable);
+
+    @Query("SELECT r FROM Review r WHERE r.user.id = :userId ORDER BY r.createdAt DESC")
+    Page<Review> findByUserIdPaged(@Param("userId") UUID userId, Pageable pageable);
+
+    @Query("SELECT r FROM Review r WHERE r.user.id = :userId AND r.repositoryName = :repoName ORDER BY r.createdAt DESC")
+    Page<Review> findByUserIdAndRepositoryNamePaged(@Param("userId") UUID userId, @Param("repoName") String repoName, Pageable pageable);
+
     @Query("SELECT DISTINCT r.repositoryName FROM Review r WHERE r.user.organization.id = :orgId AND r.repositoryName IS NOT NULL ORDER BY r.repositoryName")
     List<String> findDistinctRepositoryNamesByOrganization(@Param("orgId") UUID orgId);
 
