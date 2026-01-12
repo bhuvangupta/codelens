@@ -20,6 +20,7 @@ CodeLens combines multiple LLM providers with static analysis to provide compreh
 - **Ticket Scope Validation**: Paste ticket/story content to verify PR changes align with requirements
 - **Continuous Learning**: Mark issues as helpful or false positive - CodeLens learns and auto-suppresses noisy rules per repository
 - **Developer Pulse**: Leaderboard, daily activity charts, PR size distribution, and AI-generated weekly summaries
+- **Email Notifications**: Optional SMTP email alerts for review completion, failures, and critical issues
 
 ## Screenshots
 
