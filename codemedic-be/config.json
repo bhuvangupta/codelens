@@ -1,4 +1,4 @@
 {
-  "Cipher": "/Users/rzr1331/code-base/cipher",
-  "Ofbml": "/Users/rzr1331/code-base/ofbml"
+  "RepoA": "/Path/to/your/RepoA",
+  "RepoB": "/Path/to/your/RepoB"
 }
