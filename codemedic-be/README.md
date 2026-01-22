@@ -7,7 +7,6 @@ An automated error analysis and fixing tool that parses application logs, cluste
 - **Log Parsing & Clustering**: Parses structured logs (v1 format) and clusters similar errors
 - **AI-Powered Fixes**: Uses OpenCode AI to analyze errors and apply code fixes automatically
 - **Git Integration**: Automated branch creation, commits, and pull request creation
-- **Web Interface**: Modern Next.js frontend for visual error inspection and fix management
 - **Streaming Output**: Real-time streaming of OpenCode fix process
 
 ## Project Structure
@@ -19,10 +18,6 @@ codeMedic/
 ├── dashboard.py      # Streamlit dashboard (alternative UI)
 ├── config.json       # Configuration file (log path, repo path)
 ├── pyproject.toml    # Python dependencies
-├── frontend/         # Next.js web application
-│   ├── app/
-│   ├── components/
-│   └── package.json
 └── .python-version   # Python 3.13
 ```
 
@@ -43,24 +38,13 @@ codeMedic/
    - Must be installed and configured in your shell (https://github.com/anomalyco/opencode)
    - Used for AI-powered code analysis and fixes
 
-4. **Node.js 20+** (for frontend)
-   - Install via nvm (recommended):
-     ```bash
-     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-     source ~/.zshrc  # or restart your terminal
-     nvm install 20
-     nvm use 20
-     ```
-   - Or via Homebrew: `brew install node`
-   - Or from [nodejs.org](https://nodejs.org/)
-
-5. **GitHub CLI** (optional, for PR creation)
+4. **GitHub CLI** (optional, for PR creation)
    ```bash
    brew install gh
    gh auth login
    ```
 
-6. **Git**
+5. **Git**
    - Required for all repository operations
 
 ## Installation
@@ -76,19 +60,9 @@ uv sync
 
 Note: You don't need to activate the virtual environment. Use `uv run` to execute commands (e.g., `uv run python agent.py`).
 
-### 2. Install Frontend Dependencies
+### 2. Configure Application
 
-```bash
-cd frontend
-npm install
-cd ..
-```
-
-### 3. Configure Application
-
-The `config.json` file is **optional for web users** but **required for CLI/dashboard users**.
-
-**For CLI or Streamlit Dashboard mode**, create `config.json` in the project root:
+Create `config.json` in the project root:
 
 ```json
 {
@@ -96,29 +70,17 @@ The `config.json` file is **optional for web users** but **required for CLI/dash
 }
 ```
 
-**For Web Interface users:**
-- No config needed - upload logs directly via the UI
-- Set `REPO_BASE_PATH` in `frontend/app/page.tsx` (line 11) to your codebase directory
-
 ## Running the Application
 
-### Option 1: Full Web Application (Recommended)
+### Option 1: Backend Server (Recommended)
 
-Start both the FastAPI backend and Next.js frontend:
+Start the FastAPI backend:
 
-**Terminal 1 - Backend:**
 ```bash
 uv run uvicorn server:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**Terminal 2 - Frontend (Development):**
-```bash
-cd frontend
-npm run dev
-```
-
 Then open:
-- Frontend: http://localhost:3000
 - Backend API: http://localhost:8000
 - API Docs: http://localhost:8000/docs
 
@@ -167,15 +129,6 @@ This will:
 
 ## Usage Workflow
 
-### Web Interface
-1. **Upload Logs**: Use the file upload in the sidebar OR paste log content directly
-2. **Select Repository**: Choose your repository from the dropdown (configured via `REPO_BASE_PATH`)
-3. **Select Error**: Choose an error from the clustered list
-4. **Apply Fix**: Click "Fix" to run OpenCode AI analysis
-5. **Review Changes**: View the git diff to see what changed
-6. **Commit & Push**: Commit the fix to a new branch and push to remote
-7. **Create PR**: Optionally create a pull request automatically
-
 ### CLI Interface
 1. **Configure**: Set up `config.json` with your log and repo paths
 2. **Run**: `python agent.py`
@@ -204,27 +157,6 @@ at com.example.Another.method(Another.java:456)
 uv run uvicorn server:app --reload
 ```
 
-### Frontend (Next.js)
-
-#### Development
-```bash
-cd frontend
-npm run dev
-```
-
-#### Production Deployment
-```bash
-cd frontend
-npm run build   # Build for production
-npm run start   # Start production server (serves on port 3000)
-```
-
-#### Linting
-```bash
-cd frontend
-npm run lint
-```
-
 ## Troubleshooting
 
 ### OpenCode Not Found
@@ -240,10 +172,9 @@ python --version  # Should show 3.13.x
 ```
 
 ### Port Already in Use
-Change the port if 8000 or 3000 are occupied:
+Change the port if 8000 is occupied:
 ```bash
 uv run uvicorn server:app --port 8001
-cd frontend && npm run dev -- --port 3001
 ```
 
 ### GitHub CLI Issues
