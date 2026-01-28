@@ -154,11 +154,22 @@
             border-top: none;
             border-radius: 0 0 6px 6px;
             padding: 10px;
+            padding-left: 0;
             min-height: 450px;
         }
 
         .EasyMDEContainer .CodeMirror-focused {
             border-color: #0969da;
+        }
+
+        .EasyMDEContainer .CodeMirror-linenumbers {
+            background: #f6f8fa;
+            padding: 0 8px;
+        }
+
+        .EasyMDEContainer .CodeMirror-linenumber {
+            color: #6e7781;
+            min-width: 20px;
         }
 
         .editor-toolbar {
@@ -584,6 +595,7 @@
             element: document.getElementById('markdown-input'),
             spellChecker: false,
             autofocus: true,
+            lineNumbers: true,
             placeholder: "Start writing your markdown here...\n\nYou can use the toolbar above for formatting, or write markdown directly.",
             status: ['lines', 'words', 'cursor'],
             toolbar: [
