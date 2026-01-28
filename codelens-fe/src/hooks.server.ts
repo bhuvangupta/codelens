@@ -19,7 +19,8 @@ const PUBLIC_ROUTES = [
 	'/auth',
 	'/privacy',
 	'/terms',
-	'/health'
+	'/health',
+	'/codemedic'
 ];
 
 // Decode JWT payload (without verification - backend does that)
