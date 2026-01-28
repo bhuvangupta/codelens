@@ -44,7 +44,7 @@ function isTokenExpired(token: string): boolean {
 }
 
 // TEMPORARILY DISABLED: Authentication - remove this block to re-enable login
-const BYPASS_AUTH = true;
+const BYPASS_AUTH = false;
 const MOCK_USER = {
 	email: 'dev@localhost',
 	name: 'Dev User',
