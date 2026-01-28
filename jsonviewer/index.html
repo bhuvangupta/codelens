@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON Viewer & Validator - Format, Lint & Explore JSON</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Free online JSON viewer, validator and formatter. Validate JSON syntax, format with pretty print, minify, and explore with tree view.">
+    <meta name="keywords" content="json viewer, json validator, json formatter, json lint, json parser, json beautifier, json minifier, json tree view">
+    <meta name="author" content="JSON Viewer">
+    <meta name="robots" content="index, follow">
+    <meta name="language" content="English">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="JSON Viewer & Validator">
+    <meta property="og:description" content="Free online JSON viewer, validator and formatter. Validate, format, minify and explore JSON data.">
+    <meta property="og:site_name" content="JSON Viewer">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="JSON Viewer & Validator">
+    <meta name="twitter:description" content="Free online JSON viewer, validator and formatter.">
+
+    <!-- Mobile & PWA -->
+    <meta name="theme-color" content="#0969da">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="JSON Viewer">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>{ }</text></svg>">
+
+    <!-- DOMPurify for sanitization -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            margin: 0; padding: 0; background: #f6f8fa; min-height: 100vh;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        header { text-align: center; padding: 20px 0; }
+        header h1 { margin: 0; color: #24292f; font-weight: 600; }
+        header p { color: #57606a; margin: 8px 0 0 0; font-size: 14px; }
+        .toolbar { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center; flex-wrap: wrap; }
+        .btn {
+            padding: 10px 20px; border: none; background: #e1e4e8; color: #24292f;
+            font-size: 14px; font-weight: 500; cursor: pointer; border-radius: 6px;
+            transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn:hover { background: #d0d7de; }
+        .btn.primary { background: #0969da; color: white; }
+        .btn.primary:hover { background: #0860c7; }
+        .btn.success { background: #2da44e; color: white; }
+        .btn.success:hover { background: #2c974b; }
+        .btn.warning { background: #bf8700; color: white; }
+        .btn.warning:hover { background: #9a6700; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .main-content { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 900px) { .main-content { grid-template-columns: 1fr; } }
+        .panel { background: white; border: 1px solid #d0d7de; border-radius: 6px; display: flex; flex-direction: column; }
+        .panel-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 16px; border-bottom: 1px solid #d0d7de; background: #f6f8fa; border-radius: 6px 6px 0 0;
+        }
+        .panel-title { font-weight: 600; color: #24292f; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+        .panel-actions { display: flex; gap: 8px; }
+        .panel-actions .btn { padding: 6px 12px; font-size: 12px; }
+        .panel-body { flex: 1; position: relative; }
+        .editor-wrapper {
+            display: flex; height: 500px; overflow: hidden;
+        }
+        .line-numbers {
+            background: #f6f8fa; color: #6e7781; padding: 16px 0; text-align: right;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 13px; line-height: 1.5; user-select: none; border-right: 1px solid #d0d7de;
+            overflow: hidden; min-width: 40px;
+        }
+        .line-numbers div {
+            padding: 0 8px;
+        }
+        .line-numbers div.error-line {
+            background: #ffebe9; color: #cf222e; font-weight: 600;
+        }
+        #json-input {
+            flex: 1; height: 100%; padding: 16px; border: none;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 13px; line-height: 1.5; resize: none; outline: none; background: #fff;
+        }
+        #json-input:focus { box-shadow: inset 0 0 0 1px #0969da; }
+        .output-container { height: 500px; overflow: auto; }
+        .formatted-output-wrapper {
+            display: flex; min-height: 100%;
+        }
+        .output-line-numbers {
+            background: #f6f8fa; color: #6e7781; padding: 16px 0; text-align: right;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 13px; line-height: 1.5; user-select: none; border-right: 1px solid #d0d7de;
+            min-width: 40px; flex-shrink: 0;
+        }
+        .output-line-numbers div {
+            padding: 0 8px;
+        }
+        .formatted-output {
+            flex: 1; padding: 16px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; margin: 0;
+        }
+        .json-key { color: #0550ae; }
+        .json-string { color: #0a3069; }
+        .json-number { color: #0550ae; }
+        .json-boolean { color: #cf222e; }
+        .json-null { color: #6e7781; }
+        .status-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 16px; border-top: 1px solid #d0d7de; background: #f6f8fa;
+            font-size: 12px; color: #57606a; border-radius: 0 0 6px 6px;
+        }
+        .status-indicator { display: flex; align-items: center; gap: 6px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #6e7781; }
+        .status-dot.valid { background: #2da44e; }
+        .status-dot.invalid { background: #cf222e; }
+        .error-message {
+            background: #ffebe9; border: 1px solid #ff8182; color: #cf222e;
+            padding: 12px 16px; margin: 16px; border-radius: 6px; font-size: 13px;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        }
+        .error-message strong { display: block; margin-bottom: 4px; }
+        .tree-view { padding: 16px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 13px; }
+        .tree-node { margin-left: 20px; }
+        .tree-node:first-child { margin-left: 0; }
+        .tree-key { color: #0550ae; cursor: pointer; }
+        .tree-key:hover { text-decoration: underline; }
+        .tree-toggle { cursor: pointer; user-select: none; color: #57606a; display: inline-block; width: 16px; text-align: center; }
+        .tree-toggle:hover { color: #24292f; }
+        .tree-value { color: #24292f; }
+        .tree-value.string { color: #0a3069; }
+        .tree-value.number { color: #0550ae; }
+        .tree-value.boolean { color: #cf222e; }
+        .tree-value.null { color: #6e7781; font-style: italic; }
+        .tree-bracket { color: #24292f; }
+        .tree-children { display: block; }
+        .tree-children.collapsed { display: none; }
+        .tree-summary { color: #6e7781; font-style: italic; }
+        .output-tabs { display: flex; gap: 0; border-bottom: 1px solid #d0d7de; }
+        .output-tab {
+            padding: 8px 16px; border: none; background: transparent; color: #57606a;
+            font-size: 13px; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+        }
+        .output-tab:hover { color: #24292f; }
+        .output-tab.active { color: #0969da; border-bottom-color: #0969da; }
+        .output-content { display: none; }
+        .output-content.active { display: block; }
+        .copy-notification {
+            position: fixed; bottom: 20px; right: 20px; background: #24292f; color: white;
+            padding: 12px 20px; border-radius: 6px; font-size: 14px;
+            opacity: 0; transform: translateY(10px); transition: all 0.3s ease; z-index: 1000;
+        }
+        .copy-notification.show { opacity: 1; transform: translateY(0); }
+        .empty-state {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100%; color: #57606a; text-align: center; padding: 40px;
+        }
+        .empty-state-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state p { margin: 0; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>JSON Viewer & Validator</h1>
+            <p>Validate, format, and explore JSON data</p>
+        </header>
+        <div class="toolbar">
+            <button class="btn primary" id="validate-btn">Validate</button>
+            <button class="btn success" id="format-btn">Format / Pretty Print</button>
+            <button class="btn warning" id="minify-btn">Minify</button>
+            <button class="btn" id="clear-btn">Clear</button>
+            <button class="btn" id="sample-btn">Load Sample</button>
+        </div>
+        <div class="main-content">
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title"><span>Input</span></span>
+                    <div class="panel-actions"><button class="btn" id="paste-btn">Paste</button></div>
+                </div>
+                <div class="panel-body">
+                    <div class="editor-wrapper">
+                        <div class="line-numbers" id="input-line-numbers"><div>1</div></div>
+                        <textarea id="json-input" placeholder="Paste or type your JSON here..."></textarea>
+                    </div>
+                </div>
+                <div class="status-bar">
+                    <div class="status-indicator">
+                        <span class="status-dot" id="status-dot"></span>
+                        <span id="status-text">Enter JSON to validate</span>
+                    </div>
+                    <div id="stats"></div>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Output</span>
+                    <div class="panel-actions"><button class="btn" id="copy-btn">Copy</button></div>
+                </div>
+                <div class="output-tabs">
+                    <button class="output-tab active" data-tab="formatted">Formatted</button>
+                    <button class="output-tab" data-tab="tree">Tree View</button>
+                </div>
+                <div class="panel-body">
+                    <div class="output-container">
+                        <div class="output-content active" id="formatted-output">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">{ }</div>
+                                <p>Enter JSON in the input panel and click <strong>Format</strong> to see the output</p>
+                            </div>
+                        </div>
+                        <div class="output-content" id="tree-output">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">{ }</div>
+                                <p>Enter JSON in the input panel and click <strong>Validate</strong> to see the tree view</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="copy-notification" id="copy-notification">Copied to clipboard!</div>
+
+    <script>
+        const jsonInput = document.getElementById('json-input');
+        const formattedOutput = document.getElementById('formatted-output');
+        const treeOutput = document.getElementById('tree-output');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const statsEl = document.getElementById('stats');
+        const copyNotification = document.getElementById('copy-notification');
+        const inputLineNumbers = document.getElementById('input-line-numbers');
+        let currentJson = null;
+        let currentErrorLine = null;
+
+        // Update input line numbers
+        function updateInputLineNumbers() {
+            var lines = jsonInput.value.split('\n');
+            var count = lines.length;
+            var html = '';
+            for (var i = 1; i <= count; i++) {
+                if (i === currentErrorLine) {
+                    html += '<div class="error-line">' + i + '</div>';
+                } else {
+                    html += '<div>' + i + '</div>';
+                }
+            }
+            inputLineNumbers.innerHTML = html;
+        }
+
+        // Sync scroll between textarea and line numbers
+        jsonInput.addEventListener('scroll', function() {
+            inputLineNumbers.scrollTop = jsonInput.scrollTop;
+        });
+
+        // Update line numbers on input
+        jsonInput.addEventListener('input', function() {
+            currentErrorLine = null;
+            updateInputLineNumbers();
+        });
+
+        // Initial line numbers
+        updateInputLineNumbers();
+
+        const sampleJson = {
+            "name": "CodeLens", "version": "1.0.0", "description": "AI-powered code review tool",
+            "features": ["Multi-LLM support", "Security scanning", "Static analysis", "CI/CD integration"],
+            "config": { "maxFileSize": 10485760, "supportedLanguages": ["java", "javascript", "python", "rust"], "enableCache": true, "timeout": 30000 },
+            "stats": { "reviews": 1542, "issuesFound": 8734, "averageTime": 12.5 },
+            "isActive": true, "lastUpdated": null
+        };
+
+        function validateJson(input) {
+            try {
+                const parsed = JSON.parse(input);
+                currentJson = parsed;
+                return { valid: true, data: parsed };
+            } catch (e) {
+                currentJson = null;
+                let lineNumber = null, column = null, position = null;
+
+                // Try different browser error formats
+                // Chrome/Edge: "at position 123"
+                var posMatch = e.message.match(/at position (\d+)/i);
+                if (posMatch) {
+                    position = parseInt(posMatch[1]);
+                }
+
+                // Firefox: "at line 5 column 10"
+                var lineColMatch = e.message.match(/at line (\d+) column (\d+)/i);
+                if (lineColMatch) {
+                    lineNumber = parseInt(lineColMatch[1]);
+                    column = parseInt(lineColMatch[2]);
+                }
+
+                // Safari/WebKit: sometimes just position
+                if (!posMatch && !lineColMatch) {
+                    var altPosMatch = e.message.match(/position\s*(\d+)/i);
+                    if (altPosMatch) {
+                        position = parseInt(altPosMatch[1]);
+                    }
+                }
+
+                // Calculate line/column from position if we have position but not line
+                if (position !== null && lineNumber === null) {
+                    var lines = input.substring(0, position).split('\n');
+                    lineNumber = lines.length;
+                    column = lines[lines.length - 1].length + 1;
+                }
+
+                // Fallback: try to find error by parsing character by character
+                if (lineNumber === null) {
+                    var result = findJsonErrorLocation(input);
+                    if (result) {
+                        lineNumber = result.line;
+                        column = result.column;
+                    }
+                }
+
+                return { valid: false, error: e.message, line: lineNumber, column: column, position: position };
+            }
+        }
+
+        function findJsonErrorLocation(input) {
+            // Tokenize and find where the error occurs
+            var pos = 0;
+            var line = 1;
+            var lineStart = 0;
+            var len = input.length;
+
+            function skipWhitespace() {
+                while (pos < len) {
+                    var ch = input[pos];
+                    if (ch === '\n') { line++; lineStart = pos + 1; pos++; }
+                    else if (ch === ' ' || ch === '\t' || ch === '\r') { pos++; }
+                    else break;
+                }
+            }
+
+            function expect(chars) {
+                skipWhitespace();
+                if (pos >= len) return false;
+                return chars.indexOf(input[pos]) !== -1;
+            }
+
+            function parseValue() {
+                skipWhitespace();
+                if (pos >= len) return false;
+                var ch = input[pos];
+                if (ch === '"') return parseString();
+                if (ch === '{') return parseObject();
+                if (ch === '[') return parseArray();
+                if (ch === 't' || ch === 'f') return parseBool();
+                if (ch === 'n') return parseNull();
+                if (ch === '-' || (ch >= '0' && ch <= '9')) return parseNumber();
+                return false;
+            }
+
+            function parseString() {
+                if (input[pos] !== '"') return false;
+                pos++;
+                while (pos < len && input[pos] !== '"') {
+                    if (input[pos] === '\\') pos++;
+                    if (input[pos] === '\n') { line++; lineStart = pos + 1; }
+                    pos++;
+                }
+                if (pos >= len) return false;
+                pos++; // closing quote
+                return true;
+            }
+
+            function parseNumber() {
+                var start = pos;
+                if (input[pos] === '-') pos++;
+                while (pos < len && input[pos] >= '0' && input[pos] <= '9') pos++;
+                if (pos < len && input[pos] === '.') {
+                    pos++;
+                    while (pos < len && input[pos] >= '0' && input[pos] <= '9') pos++;
+                }
+                if (pos < len && (input[pos] === 'e' || input[pos] === 'E')) {
+                    pos++;
+                    if (pos < len && (input[pos] === '+' || input[pos] === '-')) pos++;
+                    while (pos < len && input[pos] >= '0' && input[pos] <= '9') pos++;
+                }
+                return pos > start;
+            }
+
+            function parseBool() {
+                if (input.substr(pos, 4) === 'true') { pos += 4; return true; }
+                if (input.substr(pos, 5) === 'false') { pos += 5; return true; }
+                return false;
+            }
+
+            function parseNull() {
+                if (input.substr(pos, 4) === 'null') { pos += 4; return true; }
+                return false;
+            }
+
+            function parseArray() {
+                if (input[pos] !== '[') return false;
+                pos++;
+                skipWhitespace();
+                if (pos < len && input[pos] === ']') { pos++; return true; }
+                while (true) {
+                    if (!parseValue()) return false;
+                    // Save position after value (where comma should be)
+                    var afterValueLine = line;
+                    var afterValueCol = pos - lineStart;
+                    skipWhitespace();
+                    if (pos >= len) return false;
+                    if (input[pos] === ']') { pos++; return true; }
+                    if (input[pos] !== ',') {
+                        // Report error at end of previous value
+                        line = afterValueLine;
+                        pos = lineStart + afterValueCol;
+                        return false;
+                    }
+                    pos++;
+                }
+            }
+
+            function parseObject() {
+                if (input[pos] !== '{') return false;
+                pos++;
+                skipWhitespace();
+                if (pos < len && input[pos] === '}') { pos++; return true; }
+                while (true) {
+                    skipWhitespace();
+                    if (!parseString()) return false;
+                    skipWhitespace();
+                    if (pos >= len || input[pos] !== ':') return false;
+                    pos++;
+                    if (!parseValue()) return false;
+                    // Save position after value (where comma should be)
+                    var afterValueLine = line;
+                    var afterValueCol = pos - lineStart;
+                    skipWhitespace();
+                    if (pos >= len) return false;
+                    if (input[pos] === '}') { pos++; return true; }
+                    if (input[pos] !== ',') {
+                        // Report error at end of previous value, not at next token
+                        line = afterValueLine;
+                        pos = lineStart + afterValueCol;
+                        return false;
+                    }
+                    pos++;
+                }
+            }
+
+            parseValue();
+            return { line: line, column: pos - lineStart + 1 };
+        }
+
+        function updateStatus(valid, message) {
+            statusDot.className = 'status-dot ' + (valid ? 'valid' : 'invalid');
+            statusText.textContent = message;
+        }
+
+        function createHighlightedJson(json) {
+            if (typeof json !== 'string') json = JSON.stringify(json, null, 2);
+
+            // Create wrapper with line numbers
+            var wrapper = document.createElement('div');
+            wrapper.className = 'formatted-output-wrapper';
+
+            // Line numbers
+            var lineCount = json.split('\n').length;
+            var lineNums = document.createElement('div');
+            lineNums.className = 'output-line-numbers';
+            for (var i = 1; i <= lineCount; i++) {
+                var lineDiv = document.createElement('div');
+                lineDiv.textContent = i;
+                lineNums.appendChild(lineDiv);
+            }
+            wrapper.appendChild(lineNums);
+
+            // Code content
+            var pre = document.createElement('pre');
+            pre.className = 'formatted-output';
+            var regex = /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g;
+            var lastIndex = 0, match;
+            while ((match = regex.exec(json)) !== null) {
+                if (match.index > lastIndex) pre.appendChild(document.createTextNode(json.substring(lastIndex, match.index)));
+                var cls = 'json-number';
+                var matchText = match[0];
+                if (/^"/.test(matchText)) cls = /:$/.test(matchText) ? 'json-key' : 'json-string';
+                else if (/true|false/.test(matchText)) cls = 'json-boolean';
+                else if (/null/.test(matchText)) cls = 'json-null';
+                var span = document.createElement('span');
+                span.className = cls;
+                span.textContent = matchText;
+                pre.appendChild(span);
+                lastIndex = regex.lastIndex;
+            }
+            if (lastIndex < json.length) pre.appendChild(document.createTextNode(json.substring(lastIndex)));
+            wrapper.appendChild(pre);
+            return wrapper;
+        }
+
+        function buildTreeViewDOM(data, key, isLast) {
+            if (key === undefined) key = null;
+            if (isLast === undefined) isLast = true;
+            const container = document.createElement('div');
+            container.className = 'tree-node';
+            const type = Array.isArray(data) ? 'array' : typeof data;
+            if (type === 'object' && data !== null) {
+                const keys = Object.keys(data);
+                const bracket = Array.isArray(data) ? ['[', ']'] : ['{', '}'];
+                const summary = Array.isArray(data) ? keys.length + ' items' : keys.length + ' keys';
+                const toggle = document.createElement('span');
+                toggle.className = 'tree-toggle';
+                toggle.textContent = '\u25BC';
+                toggle.onclick = function() {
+                    const children = this.parentNode.querySelector('.tree-children');
+                    const summaryEl = this.parentNode.querySelector('.tree-summary');
+                    if (children.classList.contains('collapsed')) {
+                        children.classList.remove('collapsed');
+                        summaryEl.style.display = 'none';
+                        this.textContent = '\u25BC';
+                    } else {
+                        children.classList.add('collapsed');
+                        summaryEl.style.display = 'inline';
+                        this.textContent = '\u25B6';
+                    }
+                };
+                container.appendChild(toggle);
+                if (key !== null) {
+                    const keySpan = document.createElement('span');
+                    keySpan.className = 'tree-key';
+                    keySpan.textContent = '"' + key + '"';
+                    container.appendChild(keySpan);
+                    container.appendChild(document.createTextNode(': '));
+                }
+                const openBracket = document.createElement('span');
+                openBracket.className = 'tree-bracket';
+                openBracket.textContent = bracket[0];
+                container.appendChild(openBracket);
+                const summarySpan = document.createElement('span');
+                summarySpan.className = 'tree-summary';
+                summarySpan.style.display = 'none';
+                summarySpan.textContent = ' ' + summary + ' ';
+                container.appendChild(summarySpan);
+                const childrenDiv = document.createElement('div');
+                childrenDiv.className = 'tree-children';
+                keys.forEach(function(k, i) {
+                    const childKey = Array.isArray(data) ? i : k;
+                    childrenDiv.appendChild(buildTreeViewDOM(data[k], childKey, i === keys.length - 1));
+                });
+                container.appendChild(childrenDiv);
+                const closeBracket = document.createElement('span');
+                closeBracket.className = 'tree-bracket';
+                closeBracket.textContent = bracket[1];
+                container.appendChild(closeBracket);
+                if (!isLast) container.appendChild(document.createTextNode(','));
+            } else {
+                const spacer = document.createElement('span');
+                spacer.style.width = '16px';
+                spacer.style.display = 'inline-block';
+                container.appendChild(spacer);
+                if (key !== null) {
+                    const keySpan = document.createElement('span');
+                    keySpan.className = 'tree-key';
+                    keySpan.textContent = '"' + key + '"';
+                    container.appendChild(keySpan);
+                    container.appendChild(document.createTextNode(': '));
+                }
+                const valueSpan = document.createElement('span');
+                if (type === 'string') { valueSpan.className = 'tree-value string'; valueSpan.textContent = '"' + data + '"'; }
+                else if (type === 'number') { valueSpan.className = 'tree-value number'; valueSpan.textContent = data; }
+                else if (type === 'boolean') { valueSpan.className = 'tree-value boolean'; valueSpan.textContent = data; }
+                else if (data === null) { valueSpan.className = 'tree-value null'; valueSpan.textContent = 'null'; }
+                container.appendChild(valueSpan);
+                if (!isLast) container.appendChild(document.createTextNode(','));
+            }
+            return container;
+        }
+
+        function calculateStats(data) {
+            var count = { objects: 0, arrays: 0, strings: 0, numbers: 0, booleans: 0, nulls: 0 };
+            function traverse(obj) {
+                if (Array.isArray(obj)) { count.arrays++; obj.forEach(traverse); }
+                else if (obj !== null && typeof obj === 'object') { count.objects++; Object.values(obj).forEach(traverse); }
+                else if (typeof obj === 'string') count.strings++;
+                else if (typeof obj === 'number') count.numbers++;
+                else if (typeof obj === 'boolean') count.booleans++;
+                else if (obj === null) count.nulls++;
+            }
+            traverse(data);
+            return count;
+        }
+
+        function showFormattedOutput(data) {
+            formattedOutput.textContent = '';
+            formattedOutput.appendChild(createHighlightedJson(data));
+        }
+
+        function showError(result) {
+            // Highlight error line in input
+            if (result.line) {
+                currentErrorLine = result.line;
+                updateInputLineNumbers();
+            }
+
+            var errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            var strong = document.createElement('strong');
+            strong.textContent = 'Invalid JSON';
+            errorDiv.appendChild(strong);
+            errorDiv.appendChild(document.createTextNode(result.error));
+            if (result.line) {
+                errorDiv.appendChild(document.createElement('br'));
+                errorDiv.appendChild(document.createTextNode('Line: ' + result.line + ', Column: ' + result.column));
+
+                // Show the problematic line with context
+                var lines = jsonInput.value.split('\n');
+                var startLine = Math.max(0, result.line - 3);
+                var endLine = Math.min(lines.length, result.line + 2);
+
+                var codeBlock = document.createElement('pre');
+                codeBlock.style.cssText = 'margin-top: 12px; padding: 12px; background: #1e1e1e; color: #d4d4d4; border-radius: 4px; overflow-x: auto; font-size: 12px;';
+
+                for (var i = startLine; i < endLine; i++) {
+                    var lineDiv = document.createElement('div');
+                    var lineNum = document.createElement('span');
+                    lineNum.style.cssText = 'display: inline-block; width: 35px; color: #858585; text-align: right; margin-right: 12px; user-select: none;';
+                    lineNum.textContent = (i + 1);
+                    lineDiv.appendChild(lineNum);
+
+                    var lineContent = document.createElement('span');
+                    lineContent.textContent = lines[i];
+
+                    if (i === result.line - 1) {
+                        lineDiv.style.cssText = 'background: rgba(255, 0, 0, 0.2); margin: 0 -12px; padding: 0 12px;';
+                        lineContent.style.color = '#ff6b6b';
+
+                        // Add error pointer on next line
+                        lineDiv.appendChild(lineContent);
+                        codeBlock.appendChild(lineDiv);
+
+                        if (result.column) {
+                            var pointerDiv = document.createElement('div');
+                            pointerDiv.style.cssText = 'color: #ff6b6b; margin-left: 47px;';
+                            pointerDiv.textContent = ' '.repeat(Math.max(0, result.column - 1)) + '^-- error here';
+                            codeBlock.appendChild(pointerDiv);
+                        }
+                        continue;
+                    }
+
+                    lineDiv.appendChild(lineContent);
+                    codeBlock.appendChild(lineDiv);
+                }
+
+                errorDiv.appendChild(codeBlock);
+            }
+            formattedOutput.textContent = '';
+            formattedOutput.appendChild(errorDiv);
+            treeOutput.textContent = '';
+            treeOutput.appendChild(errorDiv.cloneNode(true));
+        }
+
+        function showEmptyState(container, message) {
+            var emptyState = document.createElement('div');
+            emptyState.className = 'empty-state';
+            var icon = document.createElement('div');
+            icon.className = 'empty-state-icon';
+            icon.textContent = '{ }';
+            emptyState.appendChild(icon);
+            var p = document.createElement('p');
+            p.textContent = message;
+            emptyState.appendChild(p);
+            container.textContent = '';
+            container.appendChild(emptyState);
+        }
+
+        function updateStatsDisplay(data) {
+            var stats = calculateStats(data);
+            var parts = [];
+            if (stats.objects > 0) parts.push(stats.objects + ' obj');
+            if (stats.arrays > 0) parts.push(stats.arrays + ' arr');
+            if (stats.strings > 0) parts.push(stats.strings + ' str');
+            if (stats.numbers > 0) parts.push(stats.numbers + ' num');
+            statsEl.textContent = parts.join(' | ');
+        }
+
+        document.getElementById('validate-btn').addEventListener('click', function() {
+            var input = jsonInput.value.trim();
+            if (!input) { updateStatus(false, 'Please enter JSON'); return; }
+            var result = validateJson(input);
+            if (result.valid) {
+                currentErrorLine = null;
+                updateInputLineNumbers();
+                updateStatus(true, 'Valid JSON');
+                showFormattedOutput(result.data);
+                var treeContainer = document.createElement('div');
+                treeContainer.className = 'tree-view';
+                treeContainer.appendChild(buildTreeViewDOM(result.data));
+                treeOutput.textContent = '';
+                treeOutput.appendChild(treeContainer);
+                updateStatsDisplay(result.data);
+            } else {
+                updateStatus(false, 'Invalid JSON');
+                showError(result);
+                statsEl.textContent = '';
+            }
+        });
+
+        document.getElementById('format-btn').addEventListener('click', function() {
+            var input = jsonInput.value.trim();
+            if (!input) { updateStatus(false, 'Please enter JSON'); return; }
+            var result = validateJson(input);
+            if (result.valid) {
+                currentErrorLine = null;
+                updateInputLineNumbers();
+                updateStatus(true, 'Valid JSON');
+                showFormattedOutput(result.data);
+                var treeContainer = document.createElement('div');
+                treeContainer.className = 'tree-view';
+                treeContainer.appendChild(buildTreeViewDOM(result.data));
+                treeOutput.textContent = '';
+                treeOutput.appendChild(treeContainer);
+                updateStatsDisplay(result.data);
+            } else {
+                updateStatus(false, 'Invalid JSON');
+                showError(result);
+                statsEl.textContent = '';
+            }
+        });
+
+        document.getElementById('minify-btn').addEventListener('click', function() {
+            var input = jsonInput.value.trim();
+            if (!input) { updateStatus(false, 'Please enter JSON'); return; }
+            var result = validateJson(input);
+            if (result.valid) {
+                currentErrorLine = null;
+                updateInputLineNumbers();
+                var minified = JSON.stringify(result.data);
+                updateStatus(true, 'Valid JSON');
+                formattedOutput.textContent = '';
+                formattedOutput.appendChild(createHighlightedJson(minified));
+                updateStatsDisplay(result.data);
+            } else {
+                updateStatus(false, 'Invalid JSON');
+                showError(result);
+                statsEl.textContent = '';
+            }
+        });
+
+        document.getElementById('clear-btn').addEventListener('click', function() {
+            jsonInput.value = '';
+            showEmptyState(formattedOutput, 'Enter JSON in the input panel and click Format to see the output');
+            showEmptyState(treeOutput, 'Enter JSON in the input panel and click Validate to see the tree view');
+            statusDot.className = 'status-dot';
+            statusText.textContent = 'Enter JSON to validate';
+            statsEl.textContent = '';
+            currentJson = null;
+        });
+
+        document.getElementById('sample-btn').addEventListener('click', function() {
+            jsonInput.value = JSON.stringify(sampleJson, null, 2);
+            document.getElementById('validate-btn').click();
+        });
+
+        document.getElementById('paste-btn').addEventListener('click', async function() {
+            try {
+                var text = await navigator.clipboard.readText();
+                jsonInput.value = text;
+                document.getElementById('validate-btn').click();
+            } catch (err) { console.error('Failed to read clipboard:', err); }
+        });
+
+        document.getElementById('copy-btn').addEventListener('click', async function() {
+            var textToCopy = currentJson ? JSON.stringify(currentJson, null, 2) : jsonInput.value;
+            if (!textToCopy.trim()) return;
+            try {
+                await navigator.clipboard.writeText(textToCopy);
+                copyNotification.classList.add('show');
+                setTimeout(function() { copyNotification.classList.remove('show'); }, 2000);
+            } catch (err) { console.error('Failed to copy:', err); }
+        });
+
+        document.querySelectorAll('.output-tab').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.output-tab').forEach(function(t) { t.classList.remove('active'); });
+                document.querySelectorAll('.output-content').forEach(function(c) { c.classList.remove('active'); });
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab + '-output').classList.add('active');
+            });
+        });
+
+        var debounceTimer;
+        jsonInput.addEventListener('input', function() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(function() {
+                var input = jsonInput.value.trim();
+                if (input) {
+                    var result = validateJson(input);
+                    if (result.valid) { updateStatus(true, 'Valid JSON'); updateStatsDisplay(result.data); }
+                    else { updateStatus(false, 'Invalid JSON'); statsEl.textContent = ''; }
+                } else {
+                    statusDot.className = 'status-dot';
+                    statusText.textContent = 'Enter JSON to validate';
+                    statsEl.textContent = '';
+                }
+            }, 300);
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); document.getElementById('format-btn').click(); }
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') { e.preventDefault(); document.getElementById('minify-btn').click(); }
+        });
+    </script>
+</body>
+</html>
