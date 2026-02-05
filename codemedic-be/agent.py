@@ -6,10 +6,16 @@ import sys
 import shlex
 import logging
 import threading
+import urllib.request
+import urllib.error
 
 import logging
 import fcntl
 from contextlib import contextmanager
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 # Thread-level locks per repository path
 # fcntl.flock() only provides inter-process locking, not intra-process (thread) locking
@@ -472,32 +478,113 @@ def run_opencode_fix(repo_path, error_context, job_id: str, model=None):
         if worktree_path:
             cleanup_worktree(repo_path, worktree_path)
 
+def cleanup_stale_worktrees(repo_path, max_age_seconds=3600):
+    """
+    Clean up worktrees that are older than max_age_seconds.
+    This prevents storage bloat from crashed tasks.
+    """
+    import tempfile
+    import shutil
+    import time
+    
+    # Base dir for all codemedic worktrees
+    base_dir = os.path.join(tempfile.gettempdir(), "codemedic_worktrees")
+    if not os.path.exists(base_dir):
+        return
+
+    logger.info(f"Checking for stale worktrees in {base_dir}...")
+    
+    now = time.time()
+    
+    # 1. Prune git internal worktree list first (cleans up entries pointing to deleted dirs)
+    try:
+        subprocess.run(
+            ["git", "worktree", "prune"],
+            cwd=repo_path,
+            check=False,
+            capture_output=True
+        )
+    except Exception:
+        pass
+
+    # 2. Iterate over worktree directories
+    for dirname in os.listdir(base_dir):
+        dirpath = os.path.join(base_dir, dirname)
+        if not os.path.isdir(dirpath):
+            continue
+            
+        # Check age
+        try:
+            stat = os.stat(dirpath)
+            age = now - stat.st_mtime
+            
+            if age > max_age_seconds:
+                logger.warning(f"Found stale worktree: {dirname} (Age: {int(age)}s). Cleaning up...")
+                
+                # Try git remove first (cleanest)
+                try:
+                    subprocess.run(
+                        ["git", "worktree", "remove", "--force", dirpath],
+                        cwd=repo_path,
+                        check=False,
+                        capture_output=True
+                    )
+                except Exception:
+                    pass
+                
+                # Force delete directory if it still exists
+                if os.path.exists(dirpath):
+                    shutil.rmtree(dirpath, ignore_errors=True)
+                    logger.info(f"Deleted stale worktree directory: {dirpath}")
+                    
+        except Exception as e:
+            logger.warning(f"Error processing stale worktree {dirname}: {e}")
+
 def create_worktree(repo_path, branch_name):
     """Create a temporary worktree for a new branch."""
     import tempfile
     
-    # Create a temp dir outside the repo
-    # using mkdtemp ensures unique path
-    worktree_path = tempfile.mkdtemp(prefix="codemedic_worktree_")
+    # 1. Run cleanup first to keep storage in check
+    # Non-blocking cleanup (log errors but continue)
+    try:
+        cleanup_stale_worktrees(repo_path)
+    except Exception as e:
+        logger.warning(f"Stale worktree cleanup failed: {e}")
+    
+    # 2. Setup dedicated base directory
+    base_dir = os.path.join(tempfile.gettempdir(), "codemedic_worktrees")
+    if not os.path.exists(base_dir):
+        os.makedirs(base_dir, exist_ok=True)
+    
+    # Create worktree using mkdtemp in our dedicated dir
+    worktree_path = tempfile.mkdtemp(prefix="wt_", dir=base_dir)
     
     logger.info(f"Creating worktree at {worktree_path} for branch {branch_name}")
     
-    # Create branch and worktree
-    # If branch exists, we might need -B or handle error, assuming new unique branch for now
     try:
-        # Git handles worktree locking internally - no need for repo_lock here
-        # This allows multiple users to create worktrees concurrently
-        subprocess.run(
+        # Git handles worktree locking internally
+        res = subprocess.run(
             ["git", "worktree", "add", "-b", branch_name, worktree_path, "master"],
             cwd=repo_path,
-            check=True,
+            check=False,
             capture_output=True,
             text=True
         )
+        
+        if res.returncode != 0:
+            # Check if branch already exists
+            if f"'{branch_name}' already exists" in res.stderr:
+                 logger.info(f"Branch {branch_name} exists, attaching to it.")
+                 # Try again without -b to attach (though worktree add usually needs new path)
+                 # If branch exists, we might need a different branch name or check it out
+                 # For now, let's treat it as a hard failure for simplicity, as branch names are timestamped
+                 raise subprocess.CalledProcessError(res.returncode, res.args, output=res.stdout, stderr=res.stderr)
+            else:
+                 raise subprocess.CalledProcessError(res.returncode, res.args, output=res.stdout, stderr=res.stderr)
+                 
         return worktree_path
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to create worktree: {e.stderr}")
-        # Cleanup dir if git failed but dir was made
         if os.path.exists(worktree_path):
              try:
                  os.rmdir(worktree_path)
@@ -778,7 +865,8 @@ def push_branch(repo_path):
 
 def create_pull_request(repo_path, title, body=None, branch_name=None):
     """
-    Create a pull request using GitHub CLI (gh).
+    Create a pull request using GitHub API (via GITHUB_TOKEN) if available,
+    otherwise fallback to GitHub CLI (gh).
 
     Args:
         repo_path: Path to the git repository
@@ -788,43 +876,111 @@ def create_pull_request(repo_path, title, body=None, branch_name=None):
                      If provided, uses --head flag to create PR from this branch
                      regardless of current checkout state.
     """
+    # 1. Try GitHub API first if GITHUB_TOKEN is available
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        import requests
+        try:
+            # We need owner/repo to use API
+            remote_url = subprocess.check_output(
+                ["git", "config", "--get", "remote.origin.url"],
+                cwd=repo_path, text=True
+            ).strip()
+            
+            # Parse owner/repo from URL
+            # https://github.com/owner/repo.git or git@github.com:owner/repo.git
+            if "github.com" in remote_url:
+                if "http" in remote_url:
+                    parts = remote_url.split("github.com/")[-1].replace(".git", "").split("/")
+                else:
+                    parts = remote_url.split("github.com:")[-1].replace(".git", "").split("/")
+                
+                if len(parts) >= 2:
+                    owner, repo = parts[0], parts[1]
+                    api_url = f"https://api.github.com/repos/{owner}/{repo}/pulls"
+                    
+                    # Use provided branch name or current branch
+                    head_branch = branch_name if branch_name else get_current_branch(repo_path)
+                    
+                    data = {
+                        "title": title,
+                        "body": body or "Auto-generated by CodeMedic",
+                        "head": head_branch,
+                        "base": "master" # TODO: Make configurable
+                    }
+                    
+                    headers = {
+                        "Authorization": f"token {token}",
+                        "Accept": "application/vnd.github.v3+json"
+                    }
+                    
+                    resp = requests.post(api_url, json=data, headers=headers)
+                    if resp.status_code == 201:
+                        pr_data = resp.json()
+                        return True, "PR created via API", pr_data["html_url"]
+                    else:
+                        logger.warning(f"GitHub API Error: {resp.text}")
+                        # Fallback to CLI
+        except Exception as e:
+            logger.warning(f"GitHub API failed, falling back to CLI: {e}")
+
+    # 2. Fallback to GitHub CLI (gh)
     try:
-        # Use provided branch_name or fall back to current branch
-        if branch_name:
-            branch = branch_name
-            logger.info(f"Creating PR for explicitly specified branch: {branch}")
-        else:
-            branch = get_current_branch(repo_path)
-            if not branch:
-                return False, "Could not determine current branch.", None
-
-        # Build gh pr create command
-        # Use --head to specify the branch explicitly (works even if not checked out)
-        cmd = ["gh", "pr", "create", "--title", title, "--base", "master", "--head", branch]
-
-        if body:
-            cmd.extend(["--body", body])
-        else:
-            cmd.extend(["--body", f"Automated fix for error:\n\n{title}"])
-
+        cmd = ["gh", "pr", "create", "--title", title, "--body", body or "Auto-generated by CodeMedic"]
+        
+        # If specific branch provided, we must be on that branch or specify it.
+        # gh pr create creates from CURRENT branch usually.
+        # If we are not on the correct branch, we might need to checkout or use --head if supported (gh pr create doesn't strictly have --head for creation context, it assumes current branch)
+        # So effective checkout is needed if not already. 
+        # But if we use worktree flow, 'agent.py' might be running in main repo which IS checked out to branch.
+        # So we assume main repo is checked out to branch_name if we are here.
+        
         result = subprocess.run(
             cmd,
             cwd=repo_path,
             capture_output=True,
             text=True
         )
-
-        if result.returncode != 0:
-            error_msg = result.stderr or result.stdout
-            return False, f"PR creation failed:\n{error_msg}", None
-
-        # The output typically contains the PR URL
-        pr_url = result.stdout.strip()
-        return True, f"Pull request created successfully!", pr_url
+        
+        if result.returncode == 0:
+            return True, "PR created via CLI", result.stdout.strip()
+        else:
+            return False, f"Failed to create PR: {result.stderr}", None
     except FileNotFoundError:
-        return False, "GitHub CLI (gh) is not installed. Please install it with: brew install gh", None
+        return False, "GitHub CLI (gh) not installed or not in PATH.", None
     except Exception as e:
-        return False, f"Error creating pull request: {e}", None
+        return False, f"Error creating PR: {e}", None
+
+def cleanup_after_pr(repo_path, branch_name):
+    """
+    Clean up local state after a PR is created:
+    1. Checkout master
+    2. Reset hard to origin/master (to ensure clean slate)
+    3. Delete the local fix branch
+    """
+    try:
+        logger.info(f"Cleaning up after PR for {repo_path} (Branch: {branch_name})")
+        with repo_lock(repo_path):
+            # 1. Checkout master
+            subprocess.run(["git", "checkout", "master"], cwd=repo_path, check=True, capture_output=True)
+            
+            # 2. Fetch and Reset to origin/master to ensure we are clean
+            subprocess.run(["git", "fetch", "origin", "master"], cwd=repo_path, check=True, capture_output=True)
+            subprocess.run(["git", "reset", "--hard", "origin/master"], cwd=repo_path, check=True, capture_output=True)
+            
+            # 3. Delete local branch if it exists
+            if branch_name:
+                subprocess.run(
+                    ["git", "branch", "-D", branch_name],
+                    cwd=repo_path, check=False, capture_output=True
+                )
+                logger.info(f"Deleted local branch {branch_name}")
+                
+        return True, "Cleanup successful"
+    except Exception as e:
+        logger.error(f"Error during post-PR cleanup: {e}")
+        return False, f"Cleanup failed: {e}"
+
 
 if __name__ == "__main__":
     def main():
