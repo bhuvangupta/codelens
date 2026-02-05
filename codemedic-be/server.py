@@ -1,6 +1,10 @@
 from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from pydantic import BaseModel
 from typing import List, Optional
 import agent
@@ -383,6 +387,13 @@ def commit_push_and_pr(request: CommitRequest):
             logger.error(f"PR creation failed: {pr_msg}")
             raise HTTPException(status_code=500, detail=f"PR creation failed: {pr_msg}")
         logger.info(f"✅ PR created successfully: {pr_url}")
+
+        # Post-PR Cleanup: Checkout master and delete local fix branch
+        cleanup_success, cleanup_msg = agent.cleanup_after_pr(request.repo_path, branch_name)
+        if cleanup_success:
+            logger.info(f"🧹 Cleanup successful: {cleanup_msg}")
+        else:
+            logger.warning(f"⚠️ Cleanup warning: {cleanup_msg}")
 
         return {
             "message": f"✅ Successfully committed, pushed, and created PR!",
