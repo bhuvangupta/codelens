@@ -91,4 +91,5 @@ public class AuthController {
     }
 
     public record RefreshTokenRequest(String refreshToken) {}
+
 }
