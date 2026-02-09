@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import { env } from '$env/dynamic/public';
 
 /**
  * CodeMedic API client for error log analysis and automated fixes
@@ -7,11 +8,12 @@ import { browser } from '$app/environment';
 
 // Get the CodeMedic backend URL
 export function getCodeMedicApiBase(): string {
+	const port = env.PUBLIC_CODEMEDIC_PORT || '8000';
 	if (browser) {
 		// Use current hostname with codemedic backend port
-		return `${window.location.protocol}//${window.location.hostname}:8000`;
+		return `${window.location.protocol}//${window.location.hostname}:${port}`;
 	}
-	return 'http://localhost:8000';
+	return `http://localhost:${port}`;
 }
 
 // Types
