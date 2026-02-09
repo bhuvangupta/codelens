@@ -106,7 +106,7 @@ case $TARGET in
             echo -e "${GREEN}Docker image built: $DOCKER_IMAGE:$ENVIRONMENT${NC}"
             echo ""
             echo "To run:"
-            echo "  docker run -p 5174:5174 --env-file .env $DOCKER_IMAGE:$ENVIRONMENT"
+            echo "  docker run -p 5175:5175 --env-file .env $DOCKER_IMAGE:$ENVIRONMENT"
         fi
         ;;
 
