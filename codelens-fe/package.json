@@ -17,9 +17,9 @@
     "clean": "rm -rf build .svelte-kit node_modules/.vite",
     "prebuild": "npm run check",
     "deploy": "./scripts/deploy.sh",
-    "deploy:docker": "docker build -t codelens-ui . && docker run -p 5174:5174 codelens-ui",
+    "deploy:docker": "docker build -t codelens-ui . && docker run -p 5175:5175 codelens-ui",
     "docker:build": "docker build -t codelens-ui .",
-    "docker:run": "docker run -p 5174:5174 --env-file .env codelens-ui",
+    "docker:run": "docker run -p 5175:5175 --env-file .env codelens-ui",
     "docker:push": "docker tag codelens-ui $DOCKER_REGISTRY/codelens-ui:latest && docker push $DOCKER_REGISTRY/codelens-ui:latest"
   },
   "devDependencies": {
