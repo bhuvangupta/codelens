@@ -3,31 +3,32 @@ import type { RequestHandler } from './$types';
 
 const BACKEND = env.BACKEND_URL || 'http://localhost:9292';
 
-export const GET: RequestHandler = async ({ params, request, cookies }) => {
-	return proxyRequest('GET', params.path, request, cookies);
+export const GET: RequestHandler = async ({ params, request, cookies, locals }) => {
+	return proxyRequest('GET', params.path, request, cookies, locals);
 };
 
-export const POST: RequestHandler = async ({ params, request, cookies }) => {
-	return proxyRequest('POST', params.path, request, cookies);
+export const POST: RequestHandler = async ({ params, request, cookies, locals }) => {
+	return proxyRequest('POST', params.path, request, cookies, locals);
 };
 
-export const PUT: RequestHandler = async ({ params, request, cookies }) => {
-	return proxyRequest('PUT', params.path, request, cookies);
+export const PUT: RequestHandler = async ({ params, request, cookies, locals }) => {
+	return proxyRequest('PUT', params.path, request, cookies, locals);
 };
 
-export const DELETE: RequestHandler = async ({ params, request, cookies }) => {
-	return proxyRequest('DELETE', params.path, request, cookies);
+export const DELETE: RequestHandler = async ({ params, request, cookies, locals }) => {
+	return proxyRequest('DELETE', params.path, request, cookies, locals);
 };
 
-export const PATCH: RequestHandler = async ({ params, request, cookies }) => {
-	return proxyRequest('PATCH', params.path, request, cookies);
+export const PATCH: RequestHandler = async ({ params, request, cookies, locals }) => {
+	return proxyRequest('PATCH', params.path, request, cookies, locals);
 };
 
 async function proxyRequest(
 	method: string,
 	path: string,
 	request: Request,
-	cookies: { get: (name: string) => string | undefined }
+	cookies: { get: (name: string) => string | undefined },
+	locals: App.Locals
 ): Promise<Response> {
 	const url = new URL(request.url);
 	const targetUrl = `${BACKEND}/api/${path}${url.search}`;
@@ -77,10 +78,19 @@ async function proxyRequest(
 		const responseHeaders = new Headers();
 		response.headers.forEach((value, key) => {
 			// Don't forward certain headers
-			if (!['transfer-encoding', 'connection'].includes(key.toLowerCase())) {
+			if (!['transfer-encoding', 'connection', 'www-authenticate'].includes(key.toLowerCase())) {
 				responseHeaders.set(key, value);
 			}
 		});
+
+		// Suppress 401 in bypass mode
+		if (response.status === 401 && locals.user?.id === 'dev-user') {
+			console.warn(`Suppressing 401 for ${path} in dev mode`);
+			return new Response(JSON.stringify({ message: 'Auth bypassed', content: [], totalElements: 0 }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			});
+		}
 
 		const responseBody = await response.text();
 

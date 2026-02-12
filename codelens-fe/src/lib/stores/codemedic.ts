@@ -163,7 +163,7 @@ function createCodeMedicStore() {
 			update((s) => ({ ...s, workflowStep: step })),
 
 		setPrUrl: (url: string) =>
-			update((s) => ({ ...s, prUrl: url, workflowStep: 'pr-created', showReview: false })),
+			update((s) => ({ ...s, prUrl: url, workflowStep: 'pr-created', showReview: true })),
 
 		discardChanges: () =>
 			update((s) => ({ ...s, showReview: false, fixStatus: 'idle', diff: '' }))
