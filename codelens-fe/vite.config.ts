@@ -5,7 +5,7 @@ export default defineConfig({
 	plugins: [sveltekit()],
 	server: {
 		host: true,
-		port: 5174,
+		port: 5175,
 		strictPort: true,
 		allowedHosts: true,
 		// Disable HMR when accessing via reverse proxy/external hostname
@@ -13,7 +13,7 @@ export default defineConfig({
 		hmr: false
                 //hmr: {
                 //   host: 'localhost',
-                //   clientPort: 5174
+                //   clientPort: 5175
                 //}
 		// Note: API proxy is handled by SvelteKit route /api/[...path]/+server.ts
 		// which adds JWT from httpOnly cookie to Authorization header

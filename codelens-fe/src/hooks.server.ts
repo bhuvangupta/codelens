@@ -19,7 +19,8 @@ const PUBLIC_ROUTES = [
 	'/auth',
 	'/privacy',
 	'/terms',
-	'/health'
+	'/health',
+	'/codemedic'
 ];
 
 // Decode JWT payload (without verification - backend does that)
@@ -43,7 +44,22 @@ function isTokenExpired(token: string): boolean {
 	return Date.now() >= expiry - 60000; // 1 minute buffer
 }
 
+// TEMPORARILY DISABLED: Authentication - remove this block to re-enable login
+const BYPASS_AUTH = true;
+const MOCK_USER = {
+	email: 'dev@localhost',
+	name: 'Dev User',
+	picture: '',
+	id: 'dev-user'
+};
+
 export const handle: Handle = async ({ event, resolve }) => {
+	// Bypass authentication for development
+	if (BYPASS_AUTH) {
+		event.locals.user = MOCK_USER;
+		return resolve(event);
+	}
+
 	const accessToken = event.cookies.get('access_token');
 	const refreshToken = event.cookies.get('refresh_token');
 
@@ -122,4 +138,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	return resolve(event);
+};
+
+export const handleError = ({ error, event }) => {
+	console.error('Server error:', error);
+	return {
+		message: 'Internal Error',
+		error: String(error),
+		stack: error instanceof Error ? error.stack : undefined
+	};
 };
