@@ -139,3 +139,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	return resolve(event);
 };
+
+export const handleError = ({ error, event }) => {
+	console.error('Server error:', error);
+	return {
+		message: 'Internal Error',
+		code: 'UNKNOWN'
+	};
+};
