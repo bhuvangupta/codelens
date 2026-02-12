@@ -10,8 +10,10 @@ import { env } from '$env/dynamic/public';
 export function getCodeMedicApiBase(): string {
 	const port = env.PUBLIC_CODEMEDIC_PORT || '8000';
 	if (browser) {
-		// Use current hostname with codemedic backend port
-		return `${window.location.protocol}//${window.location.hostname}:${port}`;
+	// Use current hostname with codemedic backend port
+		if (typeof window !== 'undefined') {
+			return `${window.location.protocol}//${window.location.hostname}:${port}`;
+		}
 	}
 	return `http://localhost:${port}`;
 }

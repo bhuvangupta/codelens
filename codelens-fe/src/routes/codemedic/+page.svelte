@@ -58,6 +58,7 @@
 				codeMedicStore.setRepoConfig(config);
 			} catch (e) {
 				console.error('Failed to load CodeMedic config:', e);
+				// Optionally set an error state in the store if needed
 			}
 		}
 	});
