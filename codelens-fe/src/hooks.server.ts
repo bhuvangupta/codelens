@@ -143,6 +143,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 export const handleError = ({ error, event }) => {
 	console.error('Server error:', error);
 	return {
-		message: 'Internal Error'
+		message: 'Internal Error',
+		error: String(error),
+		stack: error instanceof Error ? error.stack : undefined
 	};
 };

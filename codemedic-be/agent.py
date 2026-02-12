@@ -379,7 +379,8 @@ def run_opencode_fix(repo_path, error_context, job_id: str, model=None):
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            universal_newlines=True
+            universal_newlines=True,
+            env={**os.environ, "PYTHONUNBUFFERED": "1"}
         )
         # Register process with job_id for per-user cancellation support
         _register_process(job_id, process)
