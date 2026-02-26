@@ -57,6 +57,11 @@ public class Repository {
     @Builder.Default
     private Set<Review> reviews = new HashSet<>();
 
+    // Code intelligence graph status
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private GraphStatus graphStatus = GraphStatus.NONE;
+
     // Webhook configuration
     private String webhookId;
     private String webhookSecret;
@@ -69,5 +74,9 @@ public class Repository {
 
     public enum GitProvider {
         GITHUB, GITLAB
+    }
+
+    public enum GraphStatus {
+        NONE, PENDING, INDEXING, READY, FAILED
     }
 }
