@@ -49,6 +49,7 @@ public class ReviewEngine {
     private final LanguageDetector languageDetector;
     private final SmartContextExtractor smartContextExtractor;
     private final SecretRedactor secretRedactor;
+    private final com.codelens.service.LearningService learningService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Custom review rules file path in repo
@@ -77,7 +78,7 @@ public class ReviewEngine {
     @Value("${codelens.review.max-lines-per-file:1000}")
     private int maxLinesPerFile;
 
-    @Value("${codelens.review.max-diff-lines:3000}")
+    @Value("${codelens.review.max-diff-lines:5000}")
     private int maxDiffLines;
 
     @Value("${codelens.review.parallel-threads:5}")
@@ -139,7 +140,8 @@ public class ReviewEngine {
             CombinedAnalysisService staticAnalysisService,
             LanguageDetector languageDetector,
             SmartContextExtractor smartContextExtractor,
-            SecretRedactor secretRedactor) {
+            SecretRedactor secretRedactor,
+            com.codelens.service.LearningService learningService) {
         this.gitProviderFactory = gitProviderFactory;
         this.llmRouter = llmRouter;
         this.diffParser = diffParser;
@@ -150,6 +152,7 @@ public class ReviewEngine {
         this.staticAnalysisService = staticAnalysisService;
         this.smartContextExtractor = smartContextExtractor;
         this.secretRedactor = secretRedactor;
+        this.learningService = learningService;
     }
 
     /**
@@ -197,6 +200,16 @@ public class ReviewEngine {
         final String repoRules = fetchCustomRepoRules(gitProvider, request.owner(), request.repo(), prInfo.headCommitSha());
         if (repoRules != null) {
             log.info("Using custom repo review rules from {}", CUSTOM_RULES_PATH);
+        }
+
+        // Load learning context once for the entire review session (avoids N+1 DB queries per file)
+        final com.codelens.service.LearningService.RepoLearningContext learningContext =
+            learningService.buildReviewContext(request.repositoryId());
+        if (learningContext.hasLearnings()) {
+            log.info("Loaded learning context: {} suppressed rules, {} severity overrides, {} hints",
+                learningContext.suppressedRuleKeys().size(),
+                learningContext.severityOverrides().size(),
+                learningContext.activeHints().size());
         }
 
         // Get changed files
@@ -249,6 +262,7 @@ public class ReviewEngine {
         List<ReviewComment> allComments = java.util.Collections.synchronizedList(new ArrayList<>());
         AtomicInteger totalInputTokens = new AtomicInteger(0);
         AtomicInteger totalOutputTokens = new AtomicInteger(0);
+        java.util.concurrent.atomic.DoubleAdder totalEstimatedCost = new java.util.concurrent.atomic.DoubleAdder();
         AtomicInteger filesCompleted = new AtomicInteger(0);
 
         // Review files in parallel
@@ -277,12 +291,14 @@ public class ReviewEngine {
 
                         FileReviewResult fileResult = reviewFile(
                             request, gitProvider, prInfo, file, parsedDiffs,
-                            request.organizationId(), eslintConfig, repoRules
+                            request.organizationId(), eslintConfig, repoRules,
+                            learningContext
                         );
                         allIssues.addAll(fileResult.issues());
                         allComments.addAll(fileResult.comments());
                         totalInputTokens.addAndGet(fileResult.inputTokens());
                         totalOutputTokens.addAndGet(fileResult.outputTokens());
+                        totalEstimatedCost.add(fileResult.estimatedCost());
 
                         // Report progress after file completion
                         int completed = filesCompleted.incrementAndGet();
@@ -353,10 +369,10 @@ public class ReviewEngine {
             progressCallback.accept(new ProgressUpdate(totalFiles, totalFiles, "Complete", ProgressPhase.COMPLETE));
         }
 
-        // Calculate cost using the actual provider's pricing
+        // Use per-file accumulated cost (accounts for mixed providers, e.g. Opus for security)
         int inputTokens = totalInputTokens.get();
         int outputTokens = totalOutputTokens.get();
-        double estimatedCost = reviewProvider.estimateCost(inputTokens, outputTokens);
+        double estimatedCost = totalEstimatedCost.sum();
 
         // Cleanup is handled by finally block in executeReview()
 
@@ -485,7 +501,8 @@ public class ReviewEngine {
             List<DiffParser.FileDiff> parsedDiffs,
             java.util.UUID organizationId,
             EslintConfig eslintConfig,
-            String customRepoRules) {
+            String customRepoRules,
+            com.codelens.service.LearningService.RepoLearningContext learningContext) {
 
         log.debug("Reviewing file: {}", file.filename());
 
@@ -493,6 +510,7 @@ public class ReviewEngine {
         List<ReviewComment> comments = new ArrayList<>();
         int inputTokens = 0;
         int outputTokens = 0;
+        String llmTaskType = "review";
 
         // Get file content
         String fileContent = null;
@@ -507,7 +525,7 @@ public class ReviewEngine {
         // Check if file should be ignored
         if (fileContent != null && ignoreCommentParser.shouldIgnoreFile(fileContent)) {
             log.info("Skipping file {} due to @codelens-ignore-file", file.filename());
-            return new FileReviewResult(issues, comments, 0, 0);
+            return new FileReviewResult(issues, comments, 0, 0, 0.0);
         }
 
         // Get ignored lines
@@ -521,7 +539,7 @@ public class ReviewEngine {
             .orElse(null);
 
         if (fileDiff == null || file.patch() == null) {
-            return new FileReviewResult(issues, comments, 0, 0);
+            return new FileReviewResult(issues, comments, 0, 0, 0.0);
         }
 
         // Run static analysis and AI review in parallel
@@ -580,6 +598,7 @@ public class ReviewEngine {
 
                 inputTokens = response.inputTokens();
                 outputTokens = response.outputTokens();
+                llmTaskType = "security";
 
                 // Parse security scan response (same format as review)
                 // Filter to changed lines to prevent LLM hallucinations for unchanged code
@@ -594,13 +613,15 @@ public class ReviewEngine {
             }
         } else {
             // Run full AI review with automatic fallback
-            String prompt = buildReviewPrompt(file.filename(), file.patch(), fileContent, customRepoRules);
+            String prompt = buildReviewPrompt(file.filename(), file.patch(), fileContent,
+                customRepoRules, learningContext.activeHints());
             try {
                 // Use fallback-enabled generation for reliability
                 LlmProvider.LlmResponse response = llmRouter.generate(prompt, "review");
 
                 inputTokens = response.inputTokens();
                 outputTokens = response.outputTokens();
+                llmTaskType = "review";
 
                 // Parse LLM response into issues and comments
                 // Filter to changed lines to prevent LLM hallucinations for unchanged code
@@ -623,7 +644,41 @@ public class ReviewEngine {
             log.warn("Failed to get static analysis results for {}", file.filename(), e);
         }
 
-        return new FileReviewResult(issues, comments, inputTokens, outputTokens);
+        // Apply learned suppressions and severity overrides from team feedback
+        if (learningContext.hasLearnings()) {
+            int beforeSize = issues.size();
+            issues.removeIf(issue ->
+                learningContext.isSuppressed(issue.getRule(), issue.getAnalyzer()));
+
+            for (ReviewIssue issue : issues) {
+                learningContext.getOverride(issue.getRule(), issue.getAnalyzer())
+                    .ifPresent(override -> {
+                        try {
+                            issue.setSeverity(ReviewIssue.Severity.valueOf(override));
+                        } catch (IllegalArgumentException e) {
+                            log.debug("Invalid severity override: {}", override);
+                        }
+                    });
+            }
+
+            int suppressed = beforeSize - issues.size();
+            if (suppressed > 0) {
+                log.debug("Suppressed {} issues in {} based on team feedback", suppressed, file.filename());
+            }
+        }
+
+        // Calculate cost using the actual provider for this file's task type
+        double fileCost = 0.0;
+        if (inputTokens > 0 || outputTokens > 0) {
+            try {
+                LlmProvider provider = llmRouter.routeRequest(llmTaskType);
+                fileCost = provider.estimateCost(inputTokens, outputTokens);
+            } catch (Exception e) {
+                log.debug("Could not estimate cost for {}", file.filename());
+            }
+        }
+
+        return new FileReviewResult(issues, comments, inputTokens, outputTokens, fileCost);
     }
 
     /**
@@ -723,7 +778,7 @@ public class ReviewEngine {
     }
 
     private String buildReviewPrompt(String filename, String patch, String fileContent,
-            String customRepoRules) {
+            String customRepoRules, List<String> learnedHints) {
         // Use smart context extraction to reduce token usage
         SmartContextExtractor.ExtractionResult extraction =
             smartContextExtractor.extract(filename, fileContent, patch);
@@ -764,6 +819,18 @@ public class ReviewEngine {
         // Append custom repo rules if available (passed as parameter for async safety)
         if (customRepoRules != null && !customRepoRules.isBlank()) {
             prompt = prompt + "\n\n---\n\n## Additional Project-Specific Rules\n\n" + customRepoRules;
+        }
+
+        // Append learned hints from team feedback
+        if (learnedHints != null && !learnedHints.isEmpty()) {
+            String hintsBlock = learnedHints.stream()
+                .limit(10)
+                .collect(java.util.stream.Collectors.joining("\n- ",
+                    "\n\n---\n\n## Learned Context (from team feedback)\n\n- ", "\n"));
+            if (hintsBlock.length() > 2000) {
+                hintsBlock = hintsBlock.substring(0, 2000) + "\n[Truncated]";
+            }
+            prompt = prompt + hintsBlock;
         }
 
         return prompt;
@@ -1453,6 +1520,7 @@ public class ReviewEngine {
         String repo,
         int prNumber,
         java.util.UUID organizationId,
+        java.util.UUID repositoryId,
         String ticketContent,
         String ticketId
     ) {
@@ -1463,7 +1531,7 @@ public class ReviewEngine {
             String repo,
             int prNumber
         ) {
-            this(gitProvider, owner, repo, prNumber, null, null, null);
+            this(gitProvider, owner, repo, prNumber, null, null, null, null);
         }
 
         public ReviewRequest(
@@ -1473,7 +1541,19 @@ public class ReviewEngine {
             int prNumber,
             java.util.UUID organizationId
         ) {
-            this(gitProvider, owner, repo, prNumber, organizationId, null, null);
+            this(gitProvider, owner, repo, prNumber, organizationId, null, null, null);
+        }
+
+        public ReviewRequest(
+            com.codelens.model.entity.Repository.GitProvider gitProvider,
+            String owner,
+            String repo,
+            int prNumber,
+            java.util.UUID organizationId,
+            String ticketContent,
+            String ticketId
+        ) {
+            this(gitProvider, owner, repo, prNumber, organizationId, null, ticketContent, ticketId);
         }
     }
 
@@ -1484,7 +1564,8 @@ public class ReviewEngine {
         List<ReviewIssue> issues,
         List<ReviewComment> comments,
         int inputTokens,
-        int outputTokens
+        int outputTokens,
+        double estimatedCost
     ) {}
 
     /**
@@ -1536,6 +1617,7 @@ public class ReviewEngine {
         String repo,
         String commitSha,
         java.util.UUID organizationId,
+        java.util.UUID repositoryId,
         String ticketContent,
         String ticketId
     ) {
@@ -1547,7 +1629,19 @@ public class ReviewEngine {
             String commitSha,
             java.util.UUID organizationId
         ) {
-            this(gitProvider, owner, repo, commitSha, organizationId, null, null);
+            this(gitProvider, owner, repo, commitSha, organizationId, null, null, null);
+        }
+
+        public CommitReviewRequest(
+            com.codelens.model.entity.Repository.GitProvider gitProvider,
+            String owner,
+            String repo,
+            String commitSha,
+            java.util.UUID organizationId,
+            String ticketContent,
+            String ticketId
+        ) {
+            this(gitProvider, owner, repo, commitSha, organizationId, null, ticketContent, ticketId);
         }
     }
 
@@ -1592,6 +1686,16 @@ public class ReviewEngine {
         final String repoRules = fetchCustomRepoRules(gitProvider, request.owner(), request.repo(), request.commitSha());
         if (repoRules != null) {
             log.info("Using custom repo review rules from {}", CUSTOM_RULES_PATH);
+        }
+
+        // Load learning context once for the entire review session
+        final com.codelens.service.LearningService.RepoLearningContext learningContext =
+            learningService.buildReviewContext(request.repositoryId());
+        if (learningContext.hasLearnings()) {
+            log.info("Loaded learning context: {} suppressed rules, {} severity overrides, {} hints",
+                learningContext.suppressedRuleKeys().size(),
+                learningContext.severityOverrides().size(),
+                learningContext.activeHints().size());
         }
 
         // Get changed files in this commit
@@ -1640,6 +1744,7 @@ public class ReviewEngine {
         List<ReviewComment> allComments = java.util.Collections.synchronizedList(new ArrayList<>());
         AtomicInteger totalInputTokens = new AtomicInteger(0);
         AtomicInteger totalOutputTokens = new AtomicInteger(0);
+        java.util.concurrent.atomic.DoubleAdder totalEstimatedCost = new java.util.concurrent.atomic.DoubleAdder();
         AtomicInteger filesCompleted = new AtomicInteger(0);
 
         // Review files in parallel
@@ -1667,12 +1772,14 @@ public class ReviewEngine {
 
                         FileReviewResult fileResult = reviewCommitFile(
                             request, gitProvider, commitInfo, file, parsedDiffs,
-                            request.organizationId(), eslintConfig, repoRules
+                            request.organizationId(), eslintConfig, repoRules,
+                            learningContext
                         );
                         allIssues.addAll(fileResult.issues());
                         allComments.addAll(fileResult.comments());
                         totalInputTokens.addAndGet(fileResult.inputTokens());
                         totalOutputTokens.addAndGet(fileResult.outputTokens());
+                        totalEstimatedCost.add(fileResult.estimatedCost());
 
                         int completed = filesCompleted.incrementAndGet();
                         if (progressCallback != null) {
@@ -1738,9 +1845,10 @@ public class ReviewEngine {
             progressCallback.accept(new ProgressUpdate(totalFiles, totalFiles, "Complete", ProgressPhase.COMPLETE));
         }
 
+        // Use per-file accumulated cost (accounts for mixed providers, e.g. Opus for security)
         int inputTokens = totalInputTokens.get();
         int outputTokens = totalOutputTokens.get();
-        double estimatedCost = reviewProvider.estimateCost(inputTokens, outputTokens);
+        double estimatedCost = totalEstimatedCost.sum();
 
         return new ReviewResult(
             summary,
@@ -1771,7 +1879,8 @@ public class ReviewEngine {
             List<DiffParser.FileDiff> parsedDiffs,
             java.util.UUID organizationId,
             EslintConfig eslintConfig,
-            String customRepoRules) {
+            String customRepoRules,
+            com.codelens.service.LearningService.RepoLearningContext learningContext) {
 
         log.debug("Reviewing file: {}", file.filename());
 
@@ -1779,6 +1888,7 @@ public class ReviewEngine {
         List<ReviewComment> comments = new ArrayList<>();
         int inputTokens = 0;
         int outputTokens = 0;
+        String llmTaskType = "review";
 
         // Get file content (for added/modified files)
         String fileContent = null;
@@ -1795,7 +1905,7 @@ public class ReviewEngine {
         // Check if file should be ignored
         if (fileContent != null && ignoreCommentParser.shouldIgnoreFile(fileContent)) {
             log.info("Skipping file {} due to @codelens-ignore-file", file.filename());
-            return new FileReviewResult(issues, comments, 0, 0);
+            return new FileReviewResult(issues, comments, 0, 0, 0.0);
         }
 
         Set<Integer> ignoredLines = fileContent != null ?
@@ -1808,7 +1918,7 @@ public class ReviewEngine {
             .orElse(null);
 
         if (fileDiff == null || file.patch() == null) {
-            return new FileReviewResult(issues, comments, 0, 0);
+            return new FileReviewResult(issues, comments, 0, 0, 0.0);
         }
 
         final String finalFileContent = fileContent;
@@ -1858,6 +1968,7 @@ public class ReviewEngine {
                 LlmProvider.LlmResponse response = llmRouter.generate(securityPrompt, "security");
                 inputTokens = response.inputTokens();
                 outputTokens = response.outputTokens();
+                llmTaskType = "security";
                 // Filter to changed lines to prevent LLM hallucinations
                 parseReviewResponse(response.content(), file.filename(), request.commitSha(),
                     issues, comments, ignoredLines, changedLines);
@@ -1866,11 +1977,13 @@ public class ReviewEngine {
             }
         } else {
             // Full AI review
-            String prompt = buildReviewPrompt(file.filename(), file.patch(), fileContent, customRepoRules);
+            String prompt = buildReviewPrompt(file.filename(), file.patch(), fileContent,
+                customRepoRules, learningContext.activeHints());
             try {
                 LlmProvider.LlmResponse response = llmRouter.generate(prompt, "review");
                 inputTokens = response.inputTokens();
                 outputTokens = response.outputTokens();
+                llmTaskType = "review";
                 // Filter to changed lines to prevent LLM hallucinations
                 parseReviewResponse(response.content(), file.filename(), request.commitSha(),
                     issues, comments, ignoredLines, changedLines);
@@ -1889,7 +2002,41 @@ public class ReviewEngine {
             log.warn("Failed to get static analysis results for {}", file.filename(), e);
         }
 
-        return new FileReviewResult(issues, comments, inputTokens, outputTokens);
+        // Apply learned suppressions and severity overrides from team feedback
+        if (learningContext.hasLearnings()) {
+            int beforeSize = issues.size();
+            issues.removeIf(issue ->
+                learningContext.isSuppressed(issue.getRule(), issue.getAnalyzer()));
+
+            for (ReviewIssue issue : issues) {
+                learningContext.getOverride(issue.getRule(), issue.getAnalyzer())
+                    .ifPresent(override -> {
+                        try {
+                            issue.setSeverity(ReviewIssue.Severity.valueOf(override));
+                        } catch (IllegalArgumentException e) {
+                            log.debug("Invalid severity override: {}", override);
+                        }
+                    });
+            }
+
+            int suppressed = beforeSize - issues.size();
+            if (suppressed > 0) {
+                log.debug("Suppressed {} issues in {} based on team feedback", suppressed, file.filename());
+            }
+        }
+
+        // Calculate cost using the actual provider for this file's task type
+        double fileCost = 0.0;
+        if (inputTokens > 0 || outputTokens > 0) {
+            try {
+                LlmProvider provider = llmRouter.routeRequest(llmTaskType);
+                fileCost = provider.estimateCost(inputTokens, outputTokens);
+            } catch (Exception e) {
+                log.debug("Could not estimate cost for {}", file.filename());
+            }
+        }
+
+        return new FileReviewResult(issues, comments, inputTokens, outputTokens, fileCost);
     }
 
     /**

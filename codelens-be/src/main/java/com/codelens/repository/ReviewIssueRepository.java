@@ -101,4 +101,20 @@ public interface ReviewIssueRepository extends JpaRepository<ReviewIssue, UUID> 
         LIMIT :limit
         """, nativeQuery = true)
     List<Object[]> findTopCategoriesByCountByOrganization(@Param("orgId") UUID orgId, @Param("since") LocalDateTime since, @Param("limit") int limit);
+
+    // ============ Feedback Aggregation ============
+
+    @Query("SELECT ri.rule, ri.analyzer, ri.category, " +
+           "SUM(CASE WHEN ri.isFalsePositive = true THEN 1 ELSE 0 END), " +
+           "SUM(CASE WHEN ri.isHelpful = true THEN 1 ELSE 0 END), " +
+           "COUNT(ri) " +
+           "FROM ReviewIssue ri " +
+           "WHERE ri.review.repository.id = :repoId AND ri.feedbackAt IS NOT NULL " +
+           "GROUP BY ri.rule, ri.analyzer, ri.category " +
+           "HAVING COUNT(ri) >= :minFeedback")
+    List<Object[]> aggregateFeedbackByRule(@Param("repoId") UUID repositoryId, @Param("minFeedback") long minFeedbackCount);
+
+    @Query("SELECT COUNT(ri) FROM ReviewIssue ri " +
+           "WHERE ri.review.repository.id = :repoId AND ri.feedbackAt IS NOT NULL")
+    long countFeedbackByRepository(@Param("repoId") UUID repositoryId);
 }

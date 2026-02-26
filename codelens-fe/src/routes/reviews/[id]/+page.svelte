@@ -2,8 +2,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
-	import { reviews } from '$lib/api/client';
-	import type { ReviewDetail, ReviewIssue, ReviewStatus, OptimizationStatus, DiffResponse, FileDiff } from '$lib/api/client';
+	import { reviews, learning, settings } from '$lib/api/client';
+	import type { ReviewDetail, ReviewIssue, ReviewStatus, OptimizationStatus, DiffResponse, FileDiff, LearningStats } from '$lib/api/client';
 	import DiffViewer from '$lib/components/DiffViewer.svelte';
 
 	let review: ReviewDetail | null = null;
@@ -28,6 +28,9 @@
 	// Cancellation state
 	let cancelling = false;
 	let showCancelConfirm = false;
+
+	// Learning indicator
+	let learningStats: LearningStats | null = null;
 
 	// Main view tab state
 	let activeMainTab: 'issues' | 'diff' = 'issues';
@@ -121,6 +124,8 @@
 			} else if (review.status === 'COMPLETED') {
 				// Load optimization status if review is completed
 				await loadOptimizations();
+				// Load learning stats for the repository
+				await loadLearningStats();
 			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load review';
@@ -234,6 +239,20 @@
 			}
 		} catch (e) {
 			console.error('Failed to load optimizations:', e);
+		}
+	}
+
+	async function loadLearningStats() {
+		if (!review?.repositoryName) return;
+		try {
+			const repos = await settings.getRepositories();
+			const repo = repos.find(r => r.fullName === review?.repositoryName);
+			if (repo) {
+				learningStats = await learning.getStats(repo.id);
+			}
+		} catch (e) {
+			// Non-critical: silently ignore if learning stats aren't available
+			console.debug('Learning stats not available:', e);
 		}
 	}
 
@@ -712,6 +731,29 @@
 						{/if}
 					</div>
 				</div>
+			</div>
+		{/if}
+
+		<!-- Learning Indicator -->
+		{#if learningStats && (learningStats.suppressedRulesCount > 0 || learningStats.severityOverridesCount > 0)}
+			<div class="bg-indigo-50 border border-indigo-200 rounded-xl px-5 py-3 mb-6 flex items-center justify-between">
+				<div class="flex items-center gap-3">
+					<div class="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+						<i class="fas fa-graduation-cap text-indigo-600 text-sm"></i>
+					</div>
+					<p class="text-sm text-indigo-800">
+						{#if learningStats.suppressedRulesCount > 0 && learningStats.severityOverridesCount > 0}
+							{learningStats.suppressedRulesCount} rule{learningStats.suppressedRulesCount > 1 ? 's' : ''} suppressed and {learningStats.severityOverridesCount} severity override{learningStats.severityOverridesCount > 1 ? 's' : ''} applied based on your team's feedback.
+						{:else if learningStats.suppressedRulesCount > 0}
+							{learningStats.suppressedRulesCount} rule{learningStats.suppressedRulesCount > 1 ? 's were' : ' was'} filtered based on your team's feedback.
+						{:else}
+							{learningStats.severityOverridesCount} severity override{learningStats.severityOverridesCount > 1 ? 's' : ''} applied based on your team's feedback.
+						{/if}
+					</p>
+				</div>
+				<a href="/settings/learning" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium whitespace-nowrap ml-4">
+					View Settings &rarr;
+				</a>
 			</div>
 		{/if}
 

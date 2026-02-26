@@ -37,6 +37,17 @@ public class RepoPromptHint {
     @Builder.Default
     private Boolean active = true;
 
+    @Column
+    @Builder.Default
+    private Double confidence = 0.0;
+
+    @Column(name = "generated_from_rule")
+    private String generatedFromRule;
+
+    @Column(name = "feedback_count")
+    @Builder.Default
+    private Integer feedbackCount = 0;
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 

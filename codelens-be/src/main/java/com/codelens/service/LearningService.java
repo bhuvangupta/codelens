@@ -11,9 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -24,6 +22,7 @@ public class LearningService {
     private final RepoLearningRepository learningRepository;
     private final RepoPromptHintRepository hintRepository;
     private final ReviewIssueRepository issueRepository;
+    private final FeedbackAggregationService feedbackAggregationService;
 
     @Value("${codelens.learning.auto-suppress-threshold:5}")
     private int autoSuppressThreshold;
@@ -51,6 +50,7 @@ public class LearningService {
         Repository repository = issue.getReview().getRepository();
         if (repository != null) {
             updateRepoLearning(repository, issue, request);
+            feedbackAggregationService.aggregateIfReady(repository.getId());
         }
 
         log.info("Feedback submitted for issue {} by user {}: helpful={}, falsePositive={}",
@@ -73,6 +73,11 @@ public class LearningService {
                         .analyzer(analyzer)
                         .category(issue.getCategory() != null ? issue.getCategory().name() : null)
                         .build());
+
+        // Track helpful feedback
+        if (Boolean.TRUE.equals(request.isHelpful())) {
+            learning.setHelpfulCount(learning.getHelpfulCount() + 1);
+        }
 
         // Update counts based on feedback
         if (Boolean.TRUE.equals(request.isFalsePositive())) {
@@ -218,6 +223,81 @@ public class LearningService {
             hintRepository.save(hint);
             log.info("Deactivated prompt hint {}", hintId);
         });
+    }
+
+    /**
+     * Reset all learned data for a repository.
+     * Deletes all RepoLearning entries and deactivates auto-learned hints.
+     */
+    @Transactional
+    public void resetLearning(UUID repositoryId) {
+        learningRepository.deleteByRepositoryId(repositoryId);
+
+        List<RepoPromptHint> autoLearnedHints = hintRepository.findByRepositoryIdAndSource(
+                repositoryId, RepoPromptHint.Source.AUTO_LEARNED);
+        for (RepoPromptHint hint : autoLearnedHints) {
+            hint.setActive(false);
+        }
+        hintRepository.saveAll(autoLearnedHints);
+
+        log.info("Reset all learning data for repository {}", repositoryId);
+    }
+
+    /**
+     * Build a cached learning context for a review session.
+     * Loads all learning data in one query to avoid N+1 DB calls per file.
+     */
+    public RepoLearningContext buildReviewContext(UUID repositoryId) {
+        if (repositoryId == null) {
+            return RepoLearningContext.EMPTY;
+        }
+
+        List<RepoLearning> allLearning = learningRepository.findByRepositoryId(repositoryId);
+
+        Set<String> suppressed = allLearning.stream()
+                .filter(l -> l.shouldSuppress(autoSuppressThreshold))
+                .map(l -> l.getRuleId() + ":" + l.getAnalyzer())
+                .collect(Collectors.toSet());
+
+        Map<String, String> overrides = allLearning.stream()
+                .filter(l -> l.getSeverityOverride() != null)
+                .collect(Collectors.toMap(
+                        l -> l.getRuleId() + ":" + l.getAnalyzer(),
+                        RepoLearning::getSeverityOverride,
+                        (a, b) -> a)); // keep first on conflict
+
+        List<String> hints = hintRepository.findByRepositoryIdAndActiveTrue(repositoryId)
+                .stream().map(RepoPromptHint::getHint).toList();
+
+        log.debug("Built learning context for repo {}: {} suppressed, {} overrides, {} hints",
+                repositoryId, suppressed.size(), overrides.size(), hints.size());
+
+        return new RepoLearningContext(suppressed, overrides, hints);
+    }
+
+    /**
+     * Immutable learning context for a review session.
+     * Passed through the review pipeline to avoid per-file DB queries.
+     */
+    public record RepoLearningContext(
+            Set<String> suppressedRuleKeys,
+            Map<String, String> severityOverrides,
+            List<String> activeHints
+    ) {
+        public static final RepoLearningContext EMPTY =
+                new RepoLearningContext(Set.of(), Map.of(), List.of());
+
+        public boolean isSuppressed(String ruleId, String analyzer) {
+            return suppressedRuleKeys.contains(ruleId + ":" + analyzer);
+        }
+
+        public Optional<String> getOverride(String ruleId, String analyzer) {
+            return Optional.ofNullable(severityOverrides.get(ruleId + ":" + analyzer));
+        }
+
+        public boolean hasLearnings() {
+            return !suppressedRuleKeys.isEmpty() || !severityOverrides.isEmpty() || !activeHints.isEmpty();
+        }
     }
 
     // Request/Response DTOs

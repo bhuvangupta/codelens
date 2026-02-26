@@ -5,6 +5,7 @@ import com.codelens.model.entity.Repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @org.springframework.stereotype.Repository
@@ -34,4 +35,9 @@ public interface RepoPromptHintRepository extends JpaRepository<RepoPromptHint, 
      * Delete all hints for a repository.
      */
     void deleteByRepositoryId(UUID repositoryId);
+
+    /**
+     * Find an auto-learned hint linked to a specific rule for a repository.
+     */
+    Optional<RepoPromptHint> findByRepositoryIdAndGeneratedFromRule(UUID repositoryId, String generatedFromRule);
 }
