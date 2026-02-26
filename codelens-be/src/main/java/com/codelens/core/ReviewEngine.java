@@ -8,12 +8,15 @@ import com.codelens.git.GitProvider;
 import com.codelens.git.GitProvider.ChangedFile;
 import com.codelens.git.GitProvider.PullRequestInfo;
 import com.codelens.git.GitProviderFactory;
+import com.codelens.intelligence.CodeIntelligenceService;
+import com.codelens.intelligence.model.GraphContext;
 import com.codelens.llm.LlmProvider;
 import com.codelens.llm.LlmRouter;
 import com.codelens.model.entity.Review;
 import com.codelens.model.entity.ReviewComment;
 import com.codelens.model.entity.ReviewIssue;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
@@ -89,6 +92,12 @@ public class ReviewEngine {
 
     @Value("${codelens.review.skip-generated:true}")
     private boolean skipGenerated;
+
+    @Value("${codelens.intelligence.enabled:true}")
+    private boolean intelligenceEnabled;
+
+    @Autowired(required = false)
+    private CodeIntelligenceService codeIntelligenceService;
 
     // Patterns for files to skip
     private static final List<Pattern> SKIP_PATTERNS = List.of(
@@ -215,6 +224,18 @@ public class ReviewEngine {
         // Get changed files
         List<ChangedFile> changedFiles = gitProvider.getChangedFiles(request.owner(), request.repo(), request.prNumber());
         log.info("Found {} changed files", changedFiles.size());
+
+        // Update code intelligence graph with changed files
+        if (intelligenceEnabled && codeIntelligenceService != null && request.repositoryId() != null) {
+            try {
+                codeIntelligenceService.updateGraphForPR(
+                    request.repositoryId(), gitProvider, request.owner(), request.repo(),
+                    changedFiles, prInfo.headCommitSha());
+                log.info("Updated code graph for repo {}", request.repositoryId());
+            } catch (Exception e) {
+                log.warn("Code intelligence graph update failed (non-blocking): {}", e.getMessage());
+            }
+        }
 
         // Calculate total diff lines for LLM-reviewable files only and enforce limit
         int totalDiffLines = changedFiles.stream()
@@ -612,9 +633,23 @@ public class ReviewEngine {
                 log.error("Error running security scan for {}", file.filename(), e);
             }
         } else {
+            // Enrich with code intelligence graph context if available
+            String graphContextBlock = null;
+            if (intelligenceEnabled && codeIntelligenceService != null && request.repositoryId() != null) {
+                try {
+                    GraphContext graphCtx = codeIntelligenceService.enrichFile(request.repositoryId(), file.filename());
+                    if (!graphCtx.isEmpty()) {
+                        graphContextBlock = codeIntelligenceService.formatForPrompt(graphCtx);
+                        log.debug("Graph context for {}: ~{} tokens", file.filename(), graphCtx.estimateTokens());
+                    }
+                } catch (Exception e) {
+                    log.debug("Graph enrichment skipped for {}: {}", file.filename(), e.getMessage());
+                }
+            }
+
             // Run full AI review with automatic fallback
             String prompt = buildReviewPrompt(file.filename(), file.patch(), fileContent,
-                customRepoRules, learningContext.activeHints());
+                customRepoRules, learningContext.activeHints(), graphContextBlock);
             try {
                 // Use fallback-enabled generation for reliability
                 LlmProvider.LlmResponse response = llmRouter.generate(prompt, "review");
@@ -778,7 +813,7 @@ public class ReviewEngine {
     }
 
     private String buildReviewPrompt(String filename, String patch, String fileContent,
-            String customRepoRules, List<String> learnedHints) {
+            String customRepoRules, List<String> learnedHints, String graphContextBlock) {
         // Use smart context extraction to reduce token usage
         SmartContextExtractor.ExtractionResult extraction =
             smartContextExtractor.extract(filename, fileContent, patch);
@@ -831,6 +866,11 @@ public class ReviewEngine {
                 hintsBlock = hintsBlock.substring(0, 2000) + "\n[Truncated]";
             }
             prompt = prompt + hintsBlock;
+        }
+
+        // Append code intelligence graph context (callers, tests, endpoints, DI)
+        if (graphContextBlock != null && !graphContextBlock.isBlank()) {
+            prompt = prompt + "\n\n---\n" + graphContextBlock;
         }
 
         return prompt;
@@ -1976,9 +2016,9 @@ public class ReviewEngine {
                 log.error("Error running security scan for {}", file.filename(), e);
             }
         } else {
-            // Full AI review
+            // Full AI review (no graph context for commit reviews)
             String prompt = buildReviewPrompt(file.filename(), file.patch(), fileContent,
-                customRepoRules, learningContext.activeHints());
+                customRepoRules, learningContext.activeHints(), null);
             try {
                 LlmProvider.LlmResponse response = llmRouter.generate(prompt, "review");
                 inputTokens = response.inputTokens();
