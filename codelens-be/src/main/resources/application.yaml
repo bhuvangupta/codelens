@@ -222,7 +222,7 @@ codelens:
     enabled: ${CODE_INTELLIGENCE_ENABLED:true}
     graph-storage-path: ${GRAPH_STORAGE_PATH:./data/graphs}
     max-files-to-index: 2000
-    supported-languages: java
+    supported-languages: java,javascript,typescript,python
     incremental-update-on-review: true
 
   # Async processing configuration

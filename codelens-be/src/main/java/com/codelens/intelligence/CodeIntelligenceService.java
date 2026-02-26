@@ -149,6 +149,9 @@ public class CodeIntelligenceService {
 
     private String detectLanguage(String filename) {
         if (filename.endsWith(".java")) return "java";
+        if (filename.endsWith(".js") || filename.endsWith(".jsx") || filename.endsWith(".mjs")) return "javascript";
+        if (filename.endsWith(".ts") || filename.endsWith(".tsx")) return "typescript";
+        if (filename.endsWith(".py")) return "python";
         return null;
     }
 }
