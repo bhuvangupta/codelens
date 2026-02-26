@@ -73,7 +73,7 @@ public class Repository {
     private LocalDateTime updatedAt;
 
     public enum GitProvider {
-        GITHUB, GITLAB
+        GITHUB, GITLAB, BITBUCKET
     }
 
     public enum GraphStatus {

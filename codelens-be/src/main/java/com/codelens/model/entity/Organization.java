@@ -83,6 +83,11 @@ public class Organization {
 
     private String gitlabUrl; // For self-hosted GitLab instances
 
+    @Column(columnDefinition = "TEXT")
+    private String bitbucketToken;
+
+    private String bitbucketWorkspace;
+
     // Billing
     private Double monthlyBudget;
     private Double currentMonthSpend;
