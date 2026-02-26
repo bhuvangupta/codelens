@@ -163,6 +163,11 @@ codelens:
       token: ${GITLAB_TOKEN:}
       webhook-secret: ${GITLAB_WEBHOOK_SECRET:}
 
+    bitbucket:
+      url: ${BITBUCKET_URL:https://api.bitbucket.org/2.0}
+      token: ${BITBUCKET_TOKEN:}
+      webhook-secret: ${BITBUCKET_WEBHOOK_SECRET:}
+
   review:
     max-files: 50
     max-lines-per-file: 1000

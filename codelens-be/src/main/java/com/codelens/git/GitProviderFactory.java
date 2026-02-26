@@ -1,5 +1,6 @@
 package com.codelens.git;
 
+import com.codelens.git.bitbucket.BitbucketService;
 import com.codelens.git.github.GitHubService;
 import com.codelens.git.gitlab.GitLabService;
 import com.codelens.model.entity.Repository.GitProvider;
@@ -13,13 +14,15 @@ public class GitProviderFactory {
 
     private final GitHubService gitHubService;
     private final GitLabService gitLabService;
+    private final BitbucketService bitbucketService;
 
     @Value("${codelens.git.default-provider:github}")
     private String defaultProvider;
 
-    public GitProviderFactory(GitHubService gitHubService, GitLabService gitLabService) {
+    public GitProviderFactory(GitHubService gitHubService, GitLabService gitLabService, BitbucketService bitbucketService) {
         this.gitHubService = gitHubService;
         this.gitLabService = gitLabService;
+        this.bitbucketService = bitbucketService;
     }
 
     /**
@@ -29,6 +32,7 @@ public class GitProviderFactory {
         return switch (provider) {
             case GITHUB -> gitHubService;
             case GITLAB -> gitLabService;
+            case BITBUCKET -> bitbucketService;
         };
     }
 
@@ -39,6 +43,7 @@ public class GitProviderFactory {
         return switch (providerName.toLowerCase()) {
             case "github" -> gitHubService;
             case "gitlab" -> gitLabService;
+            case "bitbucket" -> bitbucketService;
             default -> throw new IllegalArgumentException("Unknown git provider: " + providerName);
         };
     }
@@ -68,6 +73,27 @@ public class GitProviderFactory {
                         GitProvider.GITHUB,
                         parts[0],
                         parts[1],
+                        prNumber
+                    );
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("Invalid PR number in URL: " + url, e);
+                }
+            }
+        } else if (url.contains("bitbucket.org")) {
+            // https://bitbucket.org/workspace/repo/pull-requests/123
+            String path = url.replaceAll("https?://[^/]+/", "");
+            String[] parts = path.split("/pull-requests/");
+            if (parts.length == 2) {
+                String[] ownerRepo = parts[0].split("/");
+                if (ownerRepo.length < 2) {
+                    throw new IllegalArgumentException("Invalid Bitbucket URL format - missing workspace/repo: " + url);
+                }
+                try {
+                    int prNumber = Integer.parseInt(parts[1].split("[?#]")[0]);
+                    return new ParsedPrUrl(
+                        GitProvider.BITBUCKET,
+                        ownerRepo[0],
+                        ownerRepo[1],
                         prNumber
                     );
                 } catch (NumberFormatException e) {
@@ -126,6 +152,23 @@ public class GitProviderFactory {
                     GitProvider.GITHUB,
                     parts[0],
                     parts[1],
+                    commitSha
+                );
+            }
+        } else if (url.contains("bitbucket.org")) {
+            // https://bitbucket.org/workspace/repo/commits/abc123...
+            String path = url.replaceAll("https?://[^/]+/", "");
+            String[] parts = path.split("/commits/");
+            if (parts.length == 2) {
+                String[] ownerRepo = parts[0].split("/");
+                if (ownerRepo.length < 2) {
+                    throw new IllegalArgumentException("Invalid Bitbucket URL format - missing workspace/repo: " + url);
+                }
+                String commitSha = parts[1].split("[?#]")[0];
+                return new ParsedCommitUrl(
+                    GitProvider.BITBUCKET,
+                    ownerRepo[0],
+                    ownerRepo[1],
                     commitSha
                 );
             }

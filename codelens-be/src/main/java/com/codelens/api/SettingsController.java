@@ -244,6 +244,12 @@ public class SettingsController {
                 if (request.gitlabUrl() != null) {
                     org.setGitlabUrl(request.gitlabUrl().isEmpty() ? null : request.gitlabUrl());
                 }
+                if (request.bitbucketToken() != null) {
+                    org.setBitbucketToken(request.bitbucketToken().isEmpty() ? null : encryptionService.encrypt(request.bitbucketToken()));
+                }
+                if (request.bitbucketWorkspace() != null) {
+                    org.setBitbucketWorkspace(request.bitbucketWorkspace().isEmpty() ? null : request.bitbucketWorkspace());
+                }
                 org = organizationRepository.save(org);
                 return ResponseEntity.ok(OrgSettingsResponse.from(org));
             })
@@ -799,7 +805,9 @@ public class SettingsController {
         boolean autoApproveMembers,
         boolean hasGithubToken,
         boolean hasGitlabToken,
-        String gitlabUrl
+        String gitlabUrl,
+        boolean hasBitbucketToken,
+        String bitbucketWorkspace
     ) {
         public static OrgSettingsResponse from(Organization org) {
             return new OrgSettingsResponse(
@@ -814,7 +822,9 @@ public class SettingsController {
                 Boolean.TRUE.equals(org.getAutoApproveMembers()),
                 org.getGithubToken() != null && !org.getGithubToken().isEmpty(),
                 org.getGitlabToken() != null && !org.getGitlabToken().isEmpty(),
-                org.getGitlabUrl()
+                org.getGitlabUrl(),
+                org.getBitbucketToken() != null && !org.getBitbucketToken().isEmpty(),
+                org.getBitbucketWorkspace()
             );
         }
     }
@@ -830,7 +840,9 @@ public class SettingsController {
         Boolean autoApproveMembers,
         String githubToken,
         String gitlabToken,
-        String gitlabUrl
+        String gitlabUrl,
+        String bitbucketToken,
+        String bitbucketWorkspace
     ) {}
 
     public record RepositoryResponse(
