@@ -894,4 +894,58 @@ export interface FileDiff {
 	patch: string | null;
 }
 
+// Learning API
+export const learning = {
+	getStats: (repoId: string) =>
+		request<LearningStats>(`/learning/repositories/${repoId}/stats`),
+
+	getSuppressedRules: (repoId: string) =>
+		request<SuppressedRule[]>(`/learning/repositories/${repoId}/suppressed-rules`),
+
+	getHints: (repoId: string) =>
+		request<PromptHint[]>(`/learning/repositories/${repoId}/hints`),
+
+	addHint: (repoId: string, hint: string) =>
+		request<PromptHint>(`/learning/repositories/${repoId}/hints`, { method: 'POST', body: { hint } }),
+
+	toggleHint: (repoId: string, hintId: string, active: boolean) =>
+		request<PromptHint>(`/learning/repositories/${repoId}/hints/${hintId}`, { method: 'PUT', body: { active } }),
+
+	deleteHint: (repoId: string, hintId: string) =>
+		request<void>(`/learning/repositories/${repoId}/hints/${hintId}`, { method: 'DELETE' }),
+
+	unsuppressRule: (repoId: string, ruleKey: string) =>
+		request<void>(`/learning/repositories/${repoId}/rules/${encodeURIComponent(ruleKey)}/unsuppress`, { method: 'POST' }),
+
+	resetLearning: (repoId: string) =>
+		request<void>(`/learning/repositories/${repoId}/reset`, { method: 'POST' })
+};
+
+// Learning Types
+export interface LearningStats {
+	suppressedRulesCount: number;
+	severityOverridesCount: number;
+	activeHintsCount: number;
+	totalFeedbackCount: number;
+}
+
+export interface SuppressedRule {
+	id: string;
+	ruleId: string;
+	analyzer: string;
+	category: string | null;
+	falsePositiveCount: number;
+	autoSuppressed: boolean;
+}
+
+export interface PromptHint {
+	id: string;
+	hint: string;
+	source: 'USER_ADDED' | 'AUTO_LEARNED';
+	active: boolean;
+	confidence: number;
+	feedbackCount: number;
+	createdAt: string;
+}
+
 export { ApiError };

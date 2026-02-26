@@ -46,6 +46,10 @@ public class RepoLearning {
 
     @Column(nullable = false)
     @Builder.Default
+    private Integer helpfulCount = 0;
+
+    @Column(nullable = false)
+    @Builder.Default
     private Boolean autoSuppressed = false;
 
     @Column(length = 20)

@@ -132,8 +132,10 @@ public class LlmController {
     private String getProviderDescription(String name) {
         return switch (name) {
             case "glm" -> "ZhipuAI GLM-4 - Chinese LLM with strong code understanding";
-            case "claude" -> "Anthropic Claude - Excellent for detailed code analysis";
+            case "claude" -> "Anthropic Claude Sonnet - Excellent for detailed code analysis";
+            case "claude-opus" -> "Anthropic Claude Opus 4.6 - Premium security-focused analysis";
             case "gemini" -> "Google Gemini - Fast and capable multi-modal model";
+            case "gemini-pro" -> "Google Gemini Pro - Higher quality, detailed analysis";
             case "ollama" -> "Ollama - Local LLM for privacy-focused reviews";
             case "openai" -> "OpenAI GPT - Industry-standard code review";
             default -> "Unknown provider";

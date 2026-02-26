@@ -367,14 +367,15 @@ public class ReviewService implements ReviewExecutor {
         Review review = reviewRepository.findById(reviewId)
             .orElseThrow(() -> new IllegalArgumentException("Review not found: " + reviewId));
 
-        // Get organization ID for custom rules
+        // Get organization and repository IDs for custom rules and learning
         UUID organizationId = review.getRepository() != null && review.getRepository().getOrganization() != null
             ? review.getRepository().getOrganization().getId()
             : null;
+        UUID repositoryId = review.getRepository() != null ? review.getRepository().getId() : null;
 
         // Execute the review with progress tracking
         ReviewEngine.ReviewRequest request = new ReviewEngine.ReviewRequest(
-            provider, owner, repo, prNumber, organizationId,
+            provider, owner, repo, prNumber, organizationId, repositoryId,
             review.getTicketContent(), review.getTicketId());
         ReviewEngine.ReviewResult result;
         try {
@@ -1036,14 +1037,15 @@ public class ReviewService implements ReviewExecutor {
         Review review = reviewRepository.findById(reviewId)
             .orElseThrow(() -> new IllegalArgumentException("Review not found: " + reviewId));
 
-        // Get organization ID for custom rules
+        // Get organization and repository IDs for custom rules and learning
         UUID organizationId = review.getRepository() != null && review.getRepository().getOrganization() != null
             ? review.getRepository().getOrganization().getId()
             : null;
+        UUID repositoryId = review.getRepository() != null ? review.getRepository().getId() : null;
 
         // Execute the commit review with progress tracking
         ReviewEngine.CommitReviewRequest request = new ReviewEngine.CommitReviewRequest(
-            provider, owner, repo, commitSha, organizationId,
+            provider, owner, repo, commitSha, organizationId, repositoryId,
             review.getTicketContent(), review.getTicketId());
         ReviewEngine.ReviewResult result;
         try {
