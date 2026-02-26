@@ -14,12 +14,11 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Component
-public class JavaCodeParser {
+public class JavaCodeParser implements CodeParser {
 
     private static final Logger log = LoggerFactory.getLogger(JavaCodeParser.class);
 
-    public record ParseResult(List<CodeEntity> entities, List<CodeRelationship> relationships) {}
-
+    @Override
     public ParseResult parse(String filePath, String sourceCode) {
         List<CodeEntity> entities = new ArrayList<>();
         List<CodeRelationship> relationships = new ArrayList<>();

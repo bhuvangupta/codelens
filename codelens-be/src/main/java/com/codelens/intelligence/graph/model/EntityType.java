@@ -1,5 +1,5 @@
 package com.codelens.intelligence.graph.model;
 
 public enum EntityType {
-    FUNCTION, CLASS, INTERFACE, ENUM, RECORD, TEST, ENDPOINT
+    FUNCTION, CLASS, INTERFACE, ENUM, RECORD, TEST, ENDPOINT, MODULE, TYPE_ALIAS
 }
