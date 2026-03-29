@@ -71,7 +71,7 @@
 			recentReviews = reviewsData;
 			// Map providers to include isDefault flag
 			const defaultProvider = userSettings?.defaultLlmProvider;
-			aiModels = modelsData.map(p => ({
+			aiModels = (Array.isArray(modelsData) ? modelsData : []).map(p => ({
 				...p,
 				isDefault: p.name === defaultProvider
 			}));
