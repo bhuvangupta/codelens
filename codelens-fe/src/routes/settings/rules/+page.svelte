@@ -3,15 +3,15 @@
 	import { rules } from '$lib/api/client';
 	import type { ReviewRule } from '$lib/api/client';
 
-	let rulesList: ReviewRule[] = [];
-	let loading = true;
-	let error: string | null = null;
-	let saving = false;
-	let saveSuccess = false;
+	let rulesList: ReviewRule[] = $state([]);
+	let loading = $state(true);
+	let error: string | null = $state<string | null>(null);
+	let saving = $state(false);
+	let saveSuccess = $state(false);
 
 	// New rule form
-	let showNewRule = false;
-	let newRule = {
+	let showNewRule = $state(false);
+	let newRule = $state({
 		name: '',
 		description: '',
 		severity: 'MEDIUM' as 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW',
@@ -20,7 +20,7 @@
 		suggestion: '',
 		enabled: true,
 		languages: [] as string[]
-	};
+	});
 
 	const languages = ['Java', 'JavaScript', 'TypeScript', 'Python', 'Go', 'Rust'];
 	const severities = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
@@ -119,7 +119,7 @@
 			<p class="text-sm text-gray-600">Define custom patterns to flag during code reviews.</p>
 		</div>
 		<button
-			on:click={() => showNewRule = !showNewRule}
+			onclick={() => showNewRule = !showNewRule}
 			class="px-4 py-2 bg-primary-700 text-white rounded-lg hover:bg-primary-800 flex items-center gap-2"
 		>
 			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -138,7 +138,7 @@
 	{#if error}
 		<div class="p-4 bg-red-50 text-red-700 rounded-lg">
 			{error}
-			<button on:click={() => error = null} class="ml-2 underline">Dismiss</button>
+			<button onclick={() => error = null} class="ml-2 underline">Dismiss</button>
 		</div>
 	{/if}
 
@@ -147,7 +147,7 @@
 		<div class="card p-6">
 			<h3 class="text-lg font-semibold mb-4">Create Custom Rule</h3>
 
-			<form on:submit|preventDefault={createRule} class="space-y-4">
+			<form onsubmit={(e) => { e.preventDefault(); createRule(); }} class="space-y-4">
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 					<div>
 						<label class="block text-sm font-medium text-gray-700 mb-1">Rule Name *</label>
@@ -224,7 +224,7 @@
 							{#each languages as lang}
 								<button
 									type="button"
-									on:click={() => toggleLanguage(lang)}
+									onclick={() => toggleLanguage(lang)}
 									class="px-3 py-1 rounded-full text-sm border transition-colors"
 									class:bg-primary-100={newRule.languages.includes(lang)}
 									class:text-primary-700={newRule.languages.includes(lang)}
@@ -244,7 +244,7 @@
 				<div class="flex items-center justify-end gap-4 pt-4 border-t">
 					<button
 						type="button"
-						on:click={() => showNewRule = false}
+						onclick={() => showNewRule = false}
 						class="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
 					>
 						Cancel
@@ -311,7 +311,7 @@
 									<input
 										type="checkbox"
 										checked={rule.enabled}
-										on:change={() => toggleRule(rule.id, !rule.enabled)}
+										onchange={() => toggleRule(rule.id, !rule.enabled)}
 										class="sr-only peer"
 									/>
 									<div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-700"></div>
@@ -319,7 +319,7 @@
 
 								{#if rule.isCustom}
 									<button
-										on:click={() => deleteRule(rule.id, rule.name)}
+										onclick={() => deleteRule(rule.id, rule.name)}
 										class="p-2 text-gray-400 hover:text-red-600 transition-colors"
 										title="Delete rule"
 									>
