@@ -1,6 +1,7 @@
 package com.codelens.api;
 
 import com.codelens.config.EncryptionService;
+import com.codelens.llm.LlmProviderFactory;
 import com.codelens.model.entity.MembershipRequest;
 import com.codelens.model.entity.Organization;
 import com.codelens.model.entity.Repository;
@@ -34,19 +35,22 @@ public class SettingsController {
     private final ReviewRepository reviewRepository;
     private final EncryptionService encryptionService;
     private final MembershipService membershipService;
+    private final LlmProviderFactory llmProviderFactory;
 
     public SettingsController(UserRepository userRepository,
                               OrganizationRepository organizationRepository,
                               RepositoryRepository repositoryRepository,
                               ReviewRepository reviewRepository,
                               EncryptionService encryptionService,
-                              MembershipService membershipService) {
+                              MembershipService membershipService,
+                              LlmProviderFactory llmProviderFactory) {
         this.userRepository = userRepository;
         this.organizationRepository = organizationRepository;
         this.repositoryRepository = repositoryRepository;
         this.reviewRepository = reviewRepository;
         this.encryptionService = encryptionService;
         this.membershipService = membershipService;
+        this.llmProviderFactory = llmProviderFactory;
     }
 
     /**
@@ -265,11 +269,13 @@ public class SettingsController {
         if (auth == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        // Return available providers and their status
-        // In production, check which are configured
+        List<String> providerNames = llmProviderFactory.getEnabledProviders().stream()
+            .map(p -> p.getName())
+            .toList();
+        String defaultProvider = llmProviderFactory.getDefaultProvider().getName();
         return ResponseEntity.ok(Map.of(
-            "providers", List.of("glm", "claude", "gemini", "ollama", "openai"),
-            "defaultProvider", "gemini"
+            "providers", providerNames,
+            "defaultProvider", defaultProvider
         ));
     }
 
