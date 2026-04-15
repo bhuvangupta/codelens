@@ -96,7 +96,7 @@ public class CommentFormatter {
 
     private String truncateDescription(String desc) {
         if (desc == null) return "-";
-        desc = desc.replace("|", "\\|").replace("\n", " ");
+        desc = desc.replace("\n", " ");
         if (desc.length() > 120) {
             return desc.substring(0, 117) + "...";
         }
@@ -166,16 +166,6 @@ public class CommentFormatter {
         return issues.stream()
             .filter(i -> i.getSeverity() == severity)
             .toList();
-    }
-
-    private String getSeverityBadge(ReviewComment.Severity severity) {
-        return switch (severity) {
-            case CRITICAL -> ":rotating_light:";
-            case HIGH -> ":warning:";
-            case MEDIUM -> ":yellow_circle:";
-            case LOW -> ":information_source:";
-            case INFO -> ":bulb:";
-        };
     }
 
     private String getSeverityBadge(ReviewIssue.Severity severity) {
