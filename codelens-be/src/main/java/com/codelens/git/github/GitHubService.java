@@ -151,9 +151,10 @@ public class GitHubService implements GitProvider {
         try {
             GHRepository repository = gitHub.getRepository(owner + "/" + repo);
             GHContent content = repository.getFileContent(path, commitSha);
-            return content.getContent();
+            try (java.io.InputStream is = content.read()) {
+                return new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            }
         } catch (GHFileNotFoundException e) {
-            // File not found is expected when checking for optional files (e.g., ESLint configs)
             log.debug("File not found: {}/{}/{} at {}", owner, repo, path, commitSha);
             throw new RuntimeException("File not found: " + path, e);
         } catch (IOException e) {
