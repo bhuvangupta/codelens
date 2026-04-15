@@ -2,12 +2,12 @@
 	import { goto } from '$app/navigation';
 	import { reviews } from '$lib/api/client';
 
-	let url = '';
-	let includeOptimization = false;
-	let ticketContent = '';
-	let ticketId = '';
-	let loading = false;
-	let error: string | null = null;
+	let url = $state('');
+	let includeOptimization = $state(false);
+	let ticketContent = $state('');
+	let ticketId = $state('');
+	let loading = $state(false);
+	let error: string | null = $state<string | null>(null);
 
 	// Detect URL type
 	function getUrlType(url: string): 'pr' | 'commit' | 'invalid' {
@@ -17,8 +17,9 @@
 		// Check for commit URLs
 		// GitHub: https://github.com/owner/repo/commit/sha
 		// GitLab: https://gitlab.com/owner/repo/-/commit/sha
-		if (trimmed.includes('/commit/')) {
-			if (trimmed.includes('github.com') || trimmed.includes('gitlab.com') || trimmed.includes('gitlab')) {
+		// Bitbucket: https://bitbucket.org/owner/repo/commits/sha
+		if (trimmed.includes('/commit/') || trimmed.includes('/commits/')) {
+			if (trimmed.includes('github.com') || trimmed.includes('gitlab.com') || trimmed.includes('gitlab') || trimmed.includes('bitbucket.org')) {
 				return 'commit';
 			}
 		}
@@ -26,8 +27,9 @@
 		// Check for PR/MR URLs
 		// GitHub: https://github.com/owner/repo/pull/123
 		// GitLab: https://gitlab.com/owner/repo/-/merge_requests/123
-		if (trimmed.includes('/pull/') || trimmed.includes('/merge_requests/')) {
-			if (trimmed.includes('github.com') || trimmed.includes('gitlab.com') || trimmed.includes('gitlab')) {
+		// Bitbucket: https://bitbucket.org/owner/repo/pull-requests/123
+		if (trimmed.includes('/pull/') || trimmed.includes('/merge_requests/') || trimmed.includes('/pull-requests/')) {
+			if (trimmed.includes('github.com') || trimmed.includes('gitlab.com') || trimmed.includes('gitlab') || trimmed.includes('bitbucket.org')) {
 				return 'pr';
 			}
 		}
@@ -35,7 +37,7 @@
 		return 'invalid';
 	}
 
-	$: urlType = getUrlType(url);
+	let urlType = $derived(getUrlType(url));
 
 	async function handleSubmit() {
 		if (!url.trim()) {
@@ -44,7 +46,7 @@
 		}
 
 		if (urlType === 'invalid') {
-			error = 'Please enter a valid GitHub or GitLab PR or commit URL';
+			error = 'Please enter a valid GitHub, GitLab, or Bitbucket PR or commit URL';
 			return;
 		}
 
@@ -78,11 +80,11 @@
 <div class="p-8 max-w-2xl mx-auto">
 	<div class="mb-8">
 		<h1 class="text-2xl font-bold text-gray-900">Submit New Review</h1>
-		<p class="text-gray-600">Enter a GitHub or GitLab pull request or commit URL for AI review</p>
+		<p class="text-gray-600">Enter a GitHub, GitLab, or Bitbucket pull request or commit URL for AI review</p>
 	</div>
 
 	<div class="card p-8">
-		<form on:submit|preventDefault={handleSubmit}>
+		<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
 			<div class="mb-6">
 				<label for="url" class="block text-sm font-medium text-gray-700 mb-2">
 					PR or Commit URL
@@ -118,6 +120,8 @@
 						<li>GitHub Commit: https://github.com/owner/repo/commit/abc123</li>
 						<li>GitLab MR: https://gitlab.com/owner/repo/-/merge_requests/123</li>
 						<li>GitLab Commit: https://gitlab.com/owner/repo/-/commit/abc123</li>
+						<li>Bitbucket PR: https://bitbucket.org/owner/repo/pull-requests/123</li>
+						<li>Bitbucket Commit: https://bitbucket.org/owner/repo/commits/abc123</li>
 					</ul>
 				{/if}
 			</div>
