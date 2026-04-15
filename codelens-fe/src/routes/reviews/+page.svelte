@@ -3,26 +3,26 @@
 	import { reviews } from '$lib/api/client';
 	import type { Review, PagedResponse } from '$lib/api/client';
 
-	let reviewsList: Review[] = [];
-	let loading = true;
-	let error: string | null = null;
-	let statusFilter = 'all';
+	let reviewsList: Review[] = $state([]);
+	let loading = $state(true);
+	let error: string | null = $state<string | null>(null);
+	let statusFilter = $state('all');
 	let pollInterval: ReturnType<typeof setInterval> | null = null;
 
 	// View mode: 'my' (default) or 'all'
-	let viewMode: 'my' | 'all' = 'my';
+	let viewMode: 'my' | 'all' = $state<'my' | 'all'>('my');
 
 	// Repository filter
-	let repositories: string[] = [];
-	let selectedRepo = '';
+	let repositories: string[] = $state([]);
+	let selectedRepo = $state('');
 
 	// Pagination state
-	let currentPage = 0;
+	let currentPage = $state(0);
 	let pageSize = 20;
-	let totalElements = 0;
-	let totalPages = 0;
-	let hasNext = false;
-	let hasPrevious = false;
+	let totalElements = $state(0);
+	let totalPages = $state(0);
+	let hasNext = $state(false);
+	let hasPrevious = $state(false);
 
 	async function loadReviews() {
 		try {
@@ -80,12 +80,15 @@
 	}
 
 	// Start/stop polling based on in-progress reviews
-	$: hasInProgress = reviewsList.some(r => r.status === 'IN_PROGRESS' || r.status === 'PENDING');
-	$: if (hasInProgress) {
-		startPolling();
-	} else {
-		stopPolling();
-	}
+	let hasInProgress = $derived(reviewsList.some(r => r.status === 'IN_PROGRESS' || r.status === 'PENDING'));
+
+	$effect(() => {
+		if (hasInProgress) {
+			startPolling();
+		} else {
+			stopPolling();
+		}
+	});
 
 	async function handleViewModeChange(mode: 'my' | 'all') {
 		viewMode = mode;
@@ -117,9 +120,11 @@
 		stopPolling();
 	});
 
-	$: filteredReviews = statusFilter === 'all'
-		? reviewsList
-		: reviewsList.filter(r => r.status === statusFilter);
+	let filteredReviews = $derived(
+		statusFilter === 'all'
+			? reviewsList
+			: reviewsList.filter(r => r.status === statusFilter)
+	);
 
 	function formatDate(dateStr: string): string {
 		return new Date(dateStr).toLocaleDateString('en-US', {
@@ -177,7 +182,7 @@
 				class:text-white={viewMode === 'my'}
 				class:bg-white={viewMode !== 'my'}
 				class:text-gray-700={viewMode !== 'my'}
-				on:click={() => handleViewModeChange('my')}
+				onclick={() => handleViewModeChange('my')}
 			>
 				My Reviews
 			</button>
@@ -187,7 +192,7 @@
 				class:text-white={viewMode === 'all'}
 				class:bg-white={viewMode !== 'all'}
 				class:text-gray-700={viewMode !== 'all'}
-				on:click={() => handleViewModeChange('all')}
+				onclick={() => handleViewModeChange('all')}
 			>
 				All Reviews
 			</button>
@@ -197,7 +202,7 @@
 		{#if repositories.length > 0}
 			<select
 				bind:value={selectedRepo}
-				on:change={handleRepoChange}
+				onchange={handleRepoChange}
 				class="px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium bg-white text-gray-700 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
 			>
 				<option value="">All Repositories</option>
@@ -217,7 +222,7 @@
 				class:text-white={statusFilter === 'all'}
 				class:bg-gray-100={statusFilter !== 'all'}
 				class:text-gray-700={statusFilter !== 'all'}
-				on:click={() => statusFilter = 'all'}
+				onclick={() => statusFilter = 'all'}
 			>
 				All
 			</button>
@@ -227,7 +232,7 @@
 				class:text-white={statusFilter === 'COMPLETED'}
 				class:bg-gray-100={statusFilter !== 'COMPLETED'}
 				class:text-gray-700={statusFilter !== 'COMPLETED'}
-				on:click={() => statusFilter = 'COMPLETED'}
+				onclick={() => statusFilter = 'COMPLETED'}
 			>
 				Completed
 			</button>
@@ -237,7 +242,7 @@
 				class:text-white={statusFilter === 'IN_PROGRESS'}
 				class:bg-gray-100={statusFilter !== 'IN_PROGRESS'}
 				class:text-gray-700={statusFilter !== 'IN_PROGRESS'}
-				on:click={() => statusFilter = 'IN_PROGRESS'}
+				onclick={() => statusFilter = 'IN_PROGRESS'}
 			>
 				In Progress
 			</button>
@@ -247,9 +252,19 @@
 				class:text-white={statusFilter === 'PENDING'}
 				class:bg-gray-100={statusFilter !== 'PENDING'}
 				class:text-gray-700={statusFilter !== 'PENDING'}
-				on:click={() => statusFilter = 'PENDING'}
+				onclick={() => statusFilter = 'PENDING'}
 			>
 				Pending
+			</button>
+			<button
+				class="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+				class:bg-primary-700={statusFilter === 'FAILED'}
+				class:text-white={statusFilter === 'FAILED'}
+				class:bg-gray-100={statusFilter !== 'FAILED'}
+				class:text-gray-700={statusFilter !== 'FAILED'}
+				onclick={() => statusFilter = 'FAILED'}
+			>
+				Failed
 			</button>
 		</div>
 	</div>
@@ -304,7 +319,7 @@
 						<p class="text-gray-500 mb-4">{viewMode === 'my' ? "You haven't submitted any reviews yet" : "No reviews found"}</p>
 						<a href="/reviews/new" class="btn btn-primary">Submit your first PR</a>
 					{:else}
-						<p class="text-gray-500">No {statusFilter === 'IN_PROGRESS' ? 'in-progress' : statusFilter === 'PENDING' ? 'pending' : statusFilter.toLowerCase()} reviews</p>
+						<p class="text-gray-500">No {statusFilter === 'IN_PROGRESS' ? 'in-progress' : statusFilter === 'PENDING' ? 'pending' : statusFilter === 'FAILED' ? 'failed' : statusFilter.toLowerCase()} reviews</p>
 					{/if}
 				</div>
 			{/each}
@@ -318,7 +333,7 @@
 				</div>
 				<div class="flex items-center gap-2">
 					<button
-						on:click={prevPage}
+						onclick={prevPage}
 						disabled={!hasPrevious}
 						class="px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-gray-100 text-gray-700 hover:bg-gray-200"
 					>
@@ -334,7 +349,7 @@
 							currentPage - 3 + i}
 						{#if pageNum >= 0 && pageNum < totalPages}
 							<button
-								on:click={() => goToPage(pageNum)}
+								onclick={() => goToPage(pageNum)}
 								class="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
 								class:bg-primary-700={currentPage === pageNum}
 								class:text-white={currentPage === pageNum}
@@ -348,7 +363,7 @@
 					{/each}
 
 					<button
-						on:click={nextPage}
+						onclick={nextPage}
 						disabled={!hasNext}
 						class="px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-gray-100 text-gray-700 hover:bg-gray-200"
 					>
