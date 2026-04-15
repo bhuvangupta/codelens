@@ -314,6 +314,10 @@ Maximum 7 issues, prioritized by severity. Format:
   }
 ]
 
+**Message rules:**
+- Maximum 1-2 sentences. State what's wrong and the production impact.
+- No preamble. Be direct. Example: "N+1 query — `getCustomer()` fires per iteration. Use JOIN FETCH."
+
 Return `[]` if no issues found.
 
 **DO NOT wrap in markdown code blocks. DO NOT add any text. Start directly with `[` and end with `]`.**

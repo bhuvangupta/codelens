@@ -111,6 +111,12 @@ Format:
   }
 ]
 
+**Message rules:**
+- Maximum 1-2 sentences per message. State the problem and the fix.
+- No preamble, no "consider", no "it would be better". Be direct.
+- Bad: "This code could potentially lead to issues because the variable might be null in certain edge cases, which could cause a NullPointerException if not properly handled."
+- Good: "Null check missing on `user` — will NPE when user not found. Add null guard or use Optional."
+
 Return `[]` if no issues found.
 
 **DO NOT wrap in markdown code blocks. DO NOT add any text. Start directly with `[` and end with `]`.**
