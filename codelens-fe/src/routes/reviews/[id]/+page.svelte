@@ -6,42 +6,42 @@
 	import type { ReviewDetail, ReviewIssue, ReviewStatus, OptimizationStatus, DiffResponse, FileDiff, LearningStats } from '$lib/api/client';
 	import DiffViewer from '$lib/components/DiffViewer.svelte';
 
-	let review: ReviewDetail | null = null;
-	let loading = true;
-	let error: string | null = null;
+	let review = $state<ReviewDetail | null>(null);
+	let loading = $state(true);
+	let error = $state<string | null>(null);
 
 	// Progress tracking
-	let progress: ReviewStatus | null = null;
+	let progress = $state<ReviewStatus | null>(null);
 	let pollInterval: ReturnType<typeof setInterval> | null = null;
 
 	// Tab state for issue categories
-	let activeIssueTab: 'all' | 'security' | 'bugs' | 'quality' | 'optimizations' = 'all';
+	let activeIssueTab = $state<'all' | 'security' | 'bugs' | 'quality' | 'optimizations'>('all');
 
 	// Feedback state
-	let feedbackSubmitting: Record<string, boolean> = {};
+	let feedbackSubmitting = $state<Record<string, boolean>>({});
 
 	// Optimization state
-	let optimizationStatus: OptimizationStatus | null = null;
-	let optimizationLoading = false;
+	let optimizationStatus = $state<OptimizationStatus | null>(null);
+	let optimizationLoading = $state(false);
 	let optimizationPollInterval: ReturnType<typeof setInterval> | null = null;
 
 	// Cancellation state
-	let cancelling = false;
-	let showCancelConfirm = false;
+	let cancelling = $state(false);
+	let showCancelConfirm = $state(false);
 
 	// Learning indicator
-	let learningStats: LearningStats | null = null;
+	let learningStats = $state<LearningStats | null>(null);
 
 	// Main view tab state
-	let activeMainTab: 'issues' | 'diff' = 'issues';
+	let activeMainTab = $state<'issues' | 'diff'>('issues');
 
 	// Diff state
-	let diffData: DiffResponse | null = null;
-	let diffLoading = false;
-	let diffError: string | null = null;
+	let diffData = $state<DiffResponse | null>(null);
+	let diffLoading = $state(false);
+	let diffError = $state<string | null>(null);
 
 	// Marked instance - loaded dynamically on client only
-	let markedInstance: typeof import('marked') | null = null;
+	let markedInstance = $state<typeof import('marked') | null>(null);
 
 	// Load marked on client side only
 	if (browser) {
@@ -96,10 +96,10 @@
 		return { isCode: false, formatted: text };
 	}
 
-	$: reviewId = $page.params.id;
+	let reviewId = $derived($page.params.id);
 
 	// Check if review is still in progress
-	$: isInProgress = review?.status === 'PENDING' || review?.status === 'IN_PROGRESS';
+	let isInProgress = $derived(review?.status === 'PENDING' || review?.status === 'IN_PROGRESS');
 
 	onMount(async () => {
 		await loadReview();
@@ -299,7 +299,6 @@
 		if (!reviewId || feedbackSubmitting[issueId]) return;
 
 		feedbackSubmitting[issueId] = true;
-		feedbackSubmitting = feedbackSubmitting; // Trigger reactivity
 
 		try {
 			await reviews.submitIssueFeedback(reviewId, issueId, { isHelpful, isFalsePositive });
@@ -310,14 +309,12 @@
 					issue.isHelpful = isHelpful;
 					issue.isFalsePositive = isFalsePositive;
 					issue.feedbackAt = new Date().toISOString();
-					review = review; // Trigger reactivity
 				}
 			}
 		} catch (e) {
 			console.error('Failed to submit feedback:', e);
 		} finally {
 			feedbackSubmitting[issueId] = false;
-			feedbackSubmitting = feedbackSubmitting; // Trigger reactivity
 		}
 	}
 
@@ -362,21 +359,21 @@
 	}
 
 	// Categorize issues
-	$: securityIssues = review?.issues?.filter(i => {
+	let securityIssues = $derived(review?.issues?.filter(i => {
 		const cat = i.category?.toLowerCase() || '';
 		return cat === 'security' || cat === 'cve' || cat.includes('xss') || cat.includes('sql') || cat.includes('csrf') || cat.includes('vulnerability') || i.cveId;
-	}) || [];
+	}) || []);
 
-	$: bugIssues = review?.issues?.filter(i => {
+	let bugIssues = $derived(review?.issues?.filter(i => {
 		const cat = i.category?.toLowerCase() || '';
 		const desc = i.description?.toLowerCase() || '';
 		return (cat.includes('bug') || cat.includes('error') || cat.includes('hook') || desc.includes('missing dependency'))
 			&& !securityIssues.includes(i);
-	}) || [];
+	}) || []);
 
-	$: qualityIssues = review?.issues?.filter(i => !securityIssues.includes(i) && !bugIssues.includes(i)) || [];
+	let qualityIssues = $derived(review?.issues?.filter(i => !securityIssues.includes(i) && !bugIssues.includes(i)) || []);
 
-	$: filteredIssues = (() => {
+	let filteredIssues = $derived((() => {
 		switch (activeIssueTab) {
 			case 'security': return securityIssues;
 			case 'bugs': return bugIssues;
@@ -384,13 +381,13 @@
 			case 'optimizations': return optimizationStatus?.optimizations || [];
 			default: return review?.issues || [];
 		}
-	})();
+	})());
 
 	// Check if optimization can be run
-	$: canRunOptimization = review?.status === 'COMPLETED' && !optimizationStatus?.completed && !optimizationStatus?.inProgress && !optimizationLoading;
+	let canRunOptimization = $derived(review?.status === 'COMPLETED' && !optimizationStatus?.completed && !optimizationStatus?.inProgress && !optimizationLoading);
 
 	// Group issues by file for Files Changed section
-	$: filesWithIssues = (() => {
+	let filesWithIssues = $derived((() => {
 		const files: Record<string, { issues: number; critical: number }> = {};
 		review?.issues?.forEach(issue => {
 			const file = issue.filePath || 'Unknown';
@@ -399,7 +396,7 @@
 			if (issue.severity === 'CRITICAL' || issue.cveId) files[file].critical++;
 		});
 		return files;
-	})();
+	})());
 
 	function getFileIcon(filePath: string): { icon: string; bg: string; color: string } {
 		const ext = filePath.split('.').pop()?.toLowerCase() || '';
@@ -476,7 +473,7 @@
 			<div class="flex items-center gap-3">
 				{#if isInProgress}
 					<button
-						on:click={() => showCancelConfirm = true}
+						onclick={() => showCancelConfirm = true}
 						disabled={cancelling}
 						class="flex items-center gap-2 px-4 py-2.5 text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 hover:bg-red-50 rounded-xl transition-all disabled:opacity-50"
 					>
@@ -489,7 +486,7 @@
 					</button>
 				{:else if canRunOptimization}
 					<button
-						on:click={runOptimizationAnalysis}
+						onclick={runOptimizationAnalysis}
 						class="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-all hover-lift"
 					>
 						<i class="fas fa-bolt"></i>
@@ -507,11 +504,14 @@
 						</span>
 					</div>
 				{/if}
-				<a href={review.prUrl} target="_blank" rel="noopener"
-				   class="flex items-center gap-2 px-4 py-2.5 text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300 rounded-xl transition-all hover-lift">
-					<i class="fab fa-github"></i>
-					<span class="hidden sm:inline">View on GitHub</span>
-				</a>
+				{#if review.prUrl || review.commitUrl}
+					{@const externalUrl = review.prUrl || review.commitUrl || ''}
+					<a href={externalUrl} target="_blank" rel="noopener"
+					   class="flex items-center gap-2 px-4 py-2.5 text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300 rounded-xl transition-all hover-lift">
+						<i class="fab fa-{externalUrl.includes('gitlab') ? 'gitlab' : externalUrl.includes('bitbucket') ? 'bitbucket' : 'github'}"></i>
+						<span class="hidden sm:inline">View Source</span>
+					</a>
+				{/if}
 			</div>
 		</div>
 	</header>
@@ -760,7 +760,7 @@
 		<!-- Main View Tabs -->
 		<div class="flex gap-2 mb-6">
 			<button
-				on:click={() => handleMainTabChange('issues')}
+				onclick={() => handleMainTabChange('issues')}
 				class="flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all {activeMainTab === 'issues' ? 'bg-amber-800 text-white shadow-lg shadow-amber-800/25' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}"
 			>
 				<i class="fas fa-exclamation-triangle"></i>
@@ -768,7 +768,7 @@
 				<span class="px-2 py-0.5 {activeMainTab === 'issues' ? 'bg-white/20' : 'bg-slate-100'} rounded-full text-xs font-medium">{review.totalIssues || 0}</span>
 			</button>
 			<button
-				on:click={() => handleMainTabChange('diff')}
+				onclick={() => handleMainTabChange('diff')}
 				class="flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all {activeMainTab === 'diff' ? 'bg-amber-800 text-white shadow-lg shadow-amber-800/25' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}"
 			>
 				<i class="fas fa-code-compare"></i>
@@ -796,7 +796,7 @@
 				<nav class="flex gap-1 px-2 pt-2">
 					<button
 						class="px-5 py-3 rounded-t-xl transition-colors {activeIssueTab === 'all' ? 'text-amber-800 font-medium tab-active' : 'text-slate-500 hover:text-slate-700'}"
-						on:click={() => activeIssueTab = 'all'}
+						onclick={() => activeIssueTab = 'all'}
 					>
 						<i class="fas fa-list mr-2 opacity-70"></i>
 						All Issues
@@ -804,7 +804,7 @@
 					</button>
 					<button
 						class="px-5 py-3 rounded-t-xl transition-colors {activeIssueTab === 'security' ? 'text-amber-800 font-medium tab-active' : 'text-slate-500 hover:text-slate-700'}"
-						on:click={() => activeIssueTab = 'security'}
+						onclick={() => activeIssueTab = 'security'}
 					>
 						<i class="fas fa-shield-alt mr-2 opacity-70"></i>
 						Security
@@ -812,7 +812,7 @@
 					</button>
 					<button
 						class="px-5 py-3 rounded-t-xl transition-colors {activeIssueTab === 'bugs' ? 'text-amber-800 font-medium tab-active' : 'text-slate-500 hover:text-slate-700'}"
-						on:click={() => activeIssueTab = 'bugs'}
+						onclick={() => activeIssueTab = 'bugs'}
 					>
 						<i class="fas fa-bug mr-2 opacity-70"></i>
 						Bugs
@@ -820,7 +820,7 @@
 					</button>
 					<button
 						class="px-5 py-3 rounded-t-xl transition-colors {activeIssueTab === 'quality' ? 'text-amber-800 font-medium tab-active' : 'text-slate-500 hover:text-slate-700'}"
-						on:click={() => activeIssueTab = 'quality'}
+						onclick={() => activeIssueTab = 'quality'}
 					>
 						<i class="fas fa-code mr-2 opacity-70"></i>
 						Code Quality
@@ -829,7 +829,7 @@
 					{#if optimizationStatus?.completed || optimizationStatus?.inProgress || optimizationLoading}
 						<button
 							class="px-5 py-3 rounded-t-xl transition-colors {activeIssueTab === 'optimizations' ? 'text-indigo-700 font-medium tab-active' : 'text-slate-500 hover:text-slate-700'}"
-							on:click={() => activeIssueTab = 'optimizations'}
+							onclick={() => activeIssueTab = 'optimizations'}
 						>
 							<i class="fas fa-bolt mr-2 opacity-70"></i>
 							Optimizations
@@ -965,7 +965,7 @@
 									<span class="text-xs text-slate-500 mr-1">Was this helpful?</span>
 									<button
 										class="px-2.5 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 {issue.isHelpful === true ? 'bg-green-100 text-green-700 ring-1 ring-green-200' : 'bg-slate-100 text-slate-600 hover:bg-green-50 hover:text-green-700'}"
-										on:click={() => submitFeedback(issue.id, true, false)}
+										onclick={() => submitFeedback(issue.id, true, false)}
 										disabled={feedbackSubmitting[issue.id]}
 									>
 										{#if feedbackSubmitting[issue.id]}
@@ -977,7 +977,7 @@
 									</button>
 									<button
 										class="px-2.5 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 {issue.isFalsePositive === true ? 'bg-red-100 text-red-700 ring-1 ring-red-200' : 'bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-700'}"
-										on:click={() => submitFeedback(issue.id, false, true)}
+										onclick={() => submitFeedback(issue.id, false, true)}
 										disabled={feedbackSubmitting[issue.id]}
 									>
 										{#if feedbackSubmitting[issue.id]}
@@ -1069,8 +1069,8 @@
 
 	<!-- Cancel Confirmation Modal -->
 	{#if showCancelConfirm}
-		<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" on:click={() => showCancelConfirm = false} on:keydown={(e) => e.key === 'Escape' && (showCancelConfirm = false)} role="dialog" aria-modal="true">
-			<div class="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 p-6" on:click|stopPropagation on:keydown|stopPropagation role="document">
+		<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick={() => showCancelConfirm = false} onkeydown={(e) => e.key === 'Escape' && (showCancelConfirm = false)} role="dialog" aria-modal="true">
+			<div class="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 p-6" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="document">
 				<div class="flex items-center gap-4 mb-4">
 					<div class="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
 						<i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
@@ -1085,13 +1085,13 @@
 				</p>
 				<div class="flex justify-end gap-3">
 					<button
-						on:click={() => showCancelConfirm = false}
+						onclick={() => showCancelConfirm = false}
 						class="px-4 py-2 text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300 rounded-xl transition-all"
 					>
 						Keep Reviewing
 					</button>
 					<button
-						on:click={cancelReview}
+						onclick={cancelReview}
 						class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl transition-all"
 					>
 						Cancel Review
