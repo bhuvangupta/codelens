@@ -1100,7 +1100,9 @@ public class ReviewEngine {
                     ReviewComment comment = new ReviewComment();
                     comment.setFilePath(filename);
                     comment.setLineNumber(lineNum);
-                    comment.setBody(message + (suggestion != null ? "\n\n**Suggestion:** " + suggestion : ""));
+                    comment.setBody(message);
+                    comment.setSuggestion(suggestion);
+                    comment.setCategory(categoryStr);
                     comment.setSeverity(mapSeverity(severity));
                     comment.setCommitSha(commitSha);
                     comments.add(comment);
@@ -1155,7 +1157,9 @@ public class ReviewEngine {
                             ReviewComment comment = new ReviewComment();
                             comment.setFilePath(filename);
                             comment.setLineNumber(lineNum);
-                            comment.setBody(message + (suggestion != null ? "\n\n**Suggestion:** " + suggestion : ""));
+                            comment.setBody(message);
+                            comment.setSuggestion(suggestion);
+                            comment.setCategory(categoryStr);
                             comment.setSeverity(mapSeverity(severity));
                             comment.setCommitSha(commitSha);
                             comments.add(comment);
