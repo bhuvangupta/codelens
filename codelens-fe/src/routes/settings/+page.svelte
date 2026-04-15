@@ -114,7 +114,7 @@
 						disabled
 						class="input bg-gray-50 cursor-not-allowed"
 					/>
-					<p class="text-xs text-gray-400 mt-1">Email is managed by your Google account</p>
+					<p class="text-xs text-gray-400 mt-1">Email is managed by your OAuth provider</p>
 				</div>
 
 				<div>
