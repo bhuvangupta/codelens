@@ -119,6 +119,10 @@ Format:
   }
 ]
 
+**Message rules:**
+- Maximum 1-2 sentences per message. State the problem and the fix.
+- No preamble, no "consider", no "it would be better". Be direct.
+
 Return `[]` if no issues found.
 
 **DO NOT wrap in markdown code blocks. DO NOT add any text. Start directly with `[` and end with `]`.**
