@@ -120,6 +120,22 @@
 		return `${diffDays} days ago`;
 	}
 
+	async function retryReview(review: any) {
+		try {
+			const url = review.prUrl || review.commitUrl;
+			if (!url) return;
+			let newReview;
+			if (review.commitUrl && !review.prUrl) {
+				newReview = await reviews.submitCommit(url, {});
+			} else {
+				newReview = await reviews.submit(url, {});
+			}
+			window.location.href = `/reviews/${newReview.id}`;
+		} catch (e) {
+			console.error('Failed to retry review:', e);
+		}
+	}
+
 	function getReviewNumberBg(status: string) {
 		if (status === 'COMPLETED') return 'bg-stone-700';
 		if (status === 'FAILED') return 'bg-stone-400';
@@ -324,7 +340,7 @@
 											<span class="text-slate-500">{review.totalIssues} issues</span>
 										{/if}
 										{#if review.status === 'FAILED'}
-											<button class="text-primary font-medium hover:text-secondary">Retry</button>
+											<button onclick={() => retryReview(review)} class="text-primary font-medium hover:text-secondary">Retry</button>
 										{/if}
 									</div>
 								</div>
