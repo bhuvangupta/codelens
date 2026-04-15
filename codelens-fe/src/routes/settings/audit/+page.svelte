@@ -3,17 +3,17 @@
 	import { audit } from '$lib/api/client';
 	import type { AuditLogEntry } from '$lib/api/client';
 
-	let logs: AuditLogEntry[] = [];
-	let loading = true;
-	let error: string | null = null;
-	let page = 0;
-	let hasMore = true;
-	let loadingMore = false;
+	let logs: AuditLogEntry[] = $state([]);
+	let loading = $state(true);
+	let error: string | null = $state<string | null>(null);
+	let page = $state(0);
+	let hasMore = $state(true);
+	let loadingMore = $state(false);
 
 	// Filters
-	let actionFilter = '';
-	let userFilter = '';
-	let dateRange = '7'; // days
+	let actionFilter = $state('');
+	let userFilter = $state('');
+	let dateRange = $state('7'); // days
 
 	const actionTypes = [
 		{ value: '', label: 'All Actions' },
@@ -137,7 +137,7 @@
 				<label class="block text-sm font-medium text-gray-700 mb-1">Action Type</label>
 				<select
 					bind:value={actionFilter}
-					on:change={applyFilters}
+					onchange={applyFilters}
 					class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
 				>
 					{#each actionTypes as type}
@@ -151,7 +151,7 @@
 				<input
 					type="text"
 					bind:value={userFilter}
-					on:input={applyFilters}
+					oninput={applyFilters}
 					placeholder="Filter by user name or email"
 					class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
 				/>
@@ -161,7 +161,7 @@
 				<label class="block text-sm font-medium text-gray-700 mb-1">Time Range</label>
 				<select
 					bind:value={dateRange}
-					on:change={applyFilters}
+					onchange={applyFilters}
 					class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
 				>
 					<option value="1">Last 24 hours</option>
@@ -176,7 +176,7 @@
 	{#if error}
 		<div class="p-4 bg-red-50 text-red-700 rounded-lg">
 			{error}
-			<button on:click={() => { error = null; loadLogs(); }} class="ml-2 underline">Retry</button>
+			<button onclick={() => { error = null; loadLogs(); }} class="ml-2 underline">Retry</button>
 		</div>
 	{/if}
 
@@ -242,7 +242,7 @@
 			{#if hasMore}
 				<div class="p-4 border-t border-gray-100">
 					<button
-						on:click={loadMore}
+						onclick={loadMore}
 						disabled={loadingMore}
 						class="w-full py-2 text-primary-700 hover:bg-primary-50 rounded-lg font-medium disabled:opacity-50"
 					>
