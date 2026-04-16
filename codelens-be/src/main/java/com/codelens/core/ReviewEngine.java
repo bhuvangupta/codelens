@@ -2,7 +2,8 @@ package com.codelens.core;
 
 import com.codelens.analysis.AnalysisIssue;
 import com.codelens.analysis.CombinedAnalysisService;
-import com.codelens.analysis.javascript.EslintAnalyzer;
+import com.codelens.analysis.LintConfigBundle;
+import com.codelens.analysis.LintConfigService;
 import com.codelens.analysis.javascript.EslintAnalyzer.EslintConfig;
 import com.codelens.git.GitProvider;
 import com.codelens.git.GitProvider.ChangedFile;
@@ -53,6 +54,7 @@ public class ReviewEngine {
     private final SmartContextExtractor smartContextExtractor;
     private final SecretRedactor secretRedactor;
     private final com.codelens.service.LearningService learningService;
+    private final LintConfigService lintConfigService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Custom review rules file path in repo
@@ -150,7 +152,8 @@ public class ReviewEngine {
             LanguageDetector languageDetector,
             SmartContextExtractor smartContextExtractor,
             SecretRedactor secretRedactor,
-            com.codelens.service.LearningService learningService) {
+            com.codelens.service.LearningService learningService,
+            LintConfigService lintConfigService) {
         this.gitProviderFactory = gitProviderFactory;
         this.llmRouter = llmRouter;
         this.diffParser = diffParser;
@@ -162,6 +165,7 @@ public class ReviewEngine {
         this.smartContextExtractor = smartContextExtractor;
         this.secretRedactor = secretRedactor;
         this.learningService = learningService;
+        this.lintConfigService = lintConfigService;
     }
 
     /**
@@ -197,12 +201,14 @@ public class ReviewEngine {
         PullRequestInfo prInfo = gitProvider.getPullRequest(request.owner(), request.repo(), request.prNumber());
         log.info("Reviewing PR: {} by {}", prInfo.title(), prInfo.author());
 
-        // Try to fetch ESLint config from repo for JS/TS analysis
+        // Try to fetch lint configs from repo for static analysis
         // Note: Config is passed as parameter to avoid ThreadLocal issues in async execution
-        final EslintConfig eslintConfig = fetchEslintConfig(gitProvider, request.owner(), request.repo(), prInfo.headCommitSha());
-        if (eslintConfig != null) {
-            log.info("Using project ESLint config: {}", eslintConfig.configFilename());
+        final LintConfigBundle lintConfigBundle = lintConfigService.fetchAll(
+            gitProvider, request.owner(), request.repo(), prInfo.headCommitSha());
+        if (lintConfigBundle.eslintConfig() != null) {
+            log.info("Using project ESLint config: {}", lintConfigBundle.eslintConfig().configFilename());
         }
+        final EslintConfig eslintConfig = lintConfigBundle.eslintConfig();
 
         // Try to fetch custom review rules from repo
         // Note: Rules are passed as parameter to avoid ThreadLocal issues in async execution
@@ -312,7 +318,7 @@ public class ReviewEngine {
 
                         FileReviewResult fileResult = reviewFile(
                             request, gitProvider, prInfo, file, parsedDiffs,
-                            request.organizationId(), eslintConfig, repoRules,
+                            request.organizationId(), lintConfigBundle, repoRules,
                             learningContext
                         );
                         allIssues.addAll(fileResult.issues());
@@ -521,7 +527,7 @@ public class ReviewEngine {
             ChangedFile file,
             List<DiffParser.FileDiff> parsedDiffs,
             java.util.UUID organizationId,
-            EslintConfig eslintConfig,
+            LintConfigBundle lintConfigBundle,
             String customRepoRules,
             com.codelens.service.LearningService.RepoLearningContext learningContext) {
 
@@ -568,9 +574,9 @@ public class ReviewEngine {
         final Set<Integer> finalIgnoredLines = ignoredLines;
 
         // Start static analysis in background (including custom rules for organization)
-        // Note: eslintConfig is passed explicitly to avoid ThreadLocal issues in async execution
+        // Note: lintConfigBundle is passed explicitly to avoid ThreadLocal issues in async execution
         final java.util.UUID finalOrgId = organizationId;
-        final EslintConfig finalEslintConfig = eslintConfig;
+        final LintConfigBundle finalLintConfigBundle = lintConfigBundle;
 
         // Get changed line numbers from the diff (only additions, not context lines)
         // Static analysis should only report issues on lines that were actually changed
@@ -581,7 +587,7 @@ public class ReviewEngine {
             if (finalFileContent != null) {
                 try {
                     List<AnalysisIssue> analysisIssues = staticAnalysisService.analyzeFile(
-                        file.filename(), finalFileContent, finalOrgId, finalEslintConfig);
+                        file.filename(), finalFileContent, finalOrgId, finalLintConfigBundle);
 
                     // Filter to only issues on changed lines
                     analysisIssues = staticAnalysisService.filterToChangedLines(analysisIssues, changedLines);
@@ -1523,37 +1529,6 @@ public class ReviewEngine {
         return null;
     }
 
-    /**
-     * Fetch ESLint config from the repository if it exists.
-     * Tries each known config file name until one is found.
-     */
-    private EslintConfig fetchEslintConfig(GitProvider gitProvider, String owner, String repo, String commitSha) {
-        for (String configFilename : EslintAnalyzer.getConfigFileNames()) {
-            try {
-                String configContent = gitProvider.getFileContent(owner, repo, configFilename, commitSha);
-                if (configContent != null && !configContent.isBlank()) {
-                    log.debug("Found ESLint config: {}", configFilename);
-                    return new EslintConfig(configFilename, configContent);
-                }
-            } catch (Exception e) {
-                // File doesn't exist, try next
-                log.trace("ESLint config not found: {}", configFilename);
-            }
-        }
-
-        // Also check package.json for eslintConfig
-        try {
-            String packageJson = gitProvider.getFileContent(owner, repo, "package.json", commitSha);
-            if (packageJson != null && packageJson.contains("\"eslintConfig\"")) {
-                log.debug("Found eslintConfig in package.json");
-                return new EslintConfig("package.json", packageJson);
-            }
-        } catch (Exception e) {
-            log.trace("No package.json found");
-        }
-
-        return null;
-    }
 
     /**
      * Request to review a PR
@@ -1720,11 +1695,13 @@ public class ReviewEngine {
         GitProvider.CommitInfo commitInfo = gitProvider.getCommit(request.owner(), request.repo(), request.commitSha());
         log.info("Reviewing commit: {} by {}", commitInfo.message().split("\n")[0], commitInfo.author());
 
-        // Fetch ESLint config for JS/TS files
-        final EslintConfig eslintConfig = fetchEslintConfig(gitProvider, request.owner(), request.repo(), request.commitSha());
-        if (eslintConfig != null) {
-            log.info("Using project ESLint config: {}", eslintConfig.configFilename());
+        // Fetch lint configs for static analysis
+        final LintConfigBundle lintConfigBundle = lintConfigService.fetchAll(
+            gitProvider, request.owner(), request.repo(), request.commitSha());
+        if (lintConfigBundle.eslintConfig() != null) {
+            log.info("Using project ESLint config: {}", lintConfigBundle.eslintConfig().configFilename());
         }
+        final EslintConfig eslintConfig = lintConfigBundle.eslintConfig();
 
         // Fetch custom review rules
         final String repoRules = fetchCustomRepoRules(gitProvider, request.owner(), request.repo(), request.commitSha());
@@ -1816,7 +1793,7 @@ public class ReviewEngine {
 
                         FileReviewResult fileResult = reviewCommitFile(
                             request, gitProvider, commitInfo, file, parsedDiffs,
-                            request.organizationId(), eslintConfig, repoRules,
+                            request.organizationId(), lintConfigBundle, repoRules,
                             learningContext
                         );
                         allIssues.addAll(fileResult.issues());
@@ -1922,7 +1899,7 @@ public class ReviewEngine {
             GitProvider.ChangedFile file,
             List<DiffParser.FileDiff> parsedDiffs,
             java.util.UUID organizationId,
-            EslintConfig eslintConfig,
+            LintConfigBundle lintConfigBundle,
             String customRepoRules,
             com.codelens.service.LearningService.RepoLearningContext learningContext) {
 
@@ -1967,7 +1944,7 @@ public class ReviewEngine {
 
         final String finalFileContent = fileContent;
         final Set<Integer> finalIgnoredLines = ignoredLines;
-        final EslintConfig finalEslintConfig = eslintConfig;
+        final LintConfigBundle finalLintConfigBundle = lintConfigBundle;
         final java.util.UUID finalOrgId = organizationId;
 
         // Get changed line numbers from the diff (only additions, not context lines)
@@ -1979,7 +1956,7 @@ public class ReviewEngine {
             if (finalFileContent != null) {
                 try {
                     List<AnalysisIssue> analysisIssues = staticAnalysisService.analyzeFile(
-                        file.filename(), finalFileContent, finalOrgId, finalEslintConfig);
+                        file.filename(), finalFileContent, finalOrgId, finalLintConfigBundle);
 
                     // Filter to only issues on changed lines
                     analysisIssues = staticAnalysisService.filterToChangedLines(analysisIssues, changedLines);
