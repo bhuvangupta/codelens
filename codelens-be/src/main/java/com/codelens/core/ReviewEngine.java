@@ -4,7 +4,6 @@ import com.codelens.analysis.AnalysisIssue;
 import com.codelens.analysis.CombinedAnalysisService;
 import com.codelens.analysis.LintConfigBundle;
 import com.codelens.analysis.LintConfigService;
-import com.codelens.analysis.javascript.EslintAnalyzer.EslintConfig;
 import com.codelens.git.GitProvider;
 import com.codelens.git.GitProvider.ChangedFile;
 import com.codelens.git.GitProvider.PullRequestInfo;
@@ -208,7 +207,6 @@ public class ReviewEngine {
         if (lintConfigBundle.eslintConfig() != null) {
             log.info("Using project ESLint config: {}", lintConfigBundle.eslintConfig().configFilename());
         }
-        final EslintConfig eslintConfig = lintConfigBundle.eslintConfig();
 
         // Try to fetch custom review rules from repo
         // Note: Rules are passed as parameter to avoid ThreadLocal issues in async execution
@@ -1701,7 +1699,6 @@ public class ReviewEngine {
         if (lintConfigBundle.eslintConfig() != null) {
             log.info("Using project ESLint config: {}", lintConfigBundle.eslintConfig().configFilename());
         }
-        final EslintConfig eslintConfig = lintConfigBundle.eslintConfig();
 
         // Fetch custom review rules
         final String repoRules = fetchCustomRepoRules(gitProvider, request.owner(), request.repo(), request.commitSha());
