@@ -154,7 +154,9 @@ public class LintConfigService {
     }
 
     /**
-     * Parse package.json scripts.lint to determine which JS/TS linter(s) the repo actually uses.
+     * Parse package.json scripts to determine which JS/TS linter(s) the repo actually uses.
+     * Scans any script whose name is lint-related (e.g., "lint", "lint:js", "lint:ts",
+     * "check", "check:lint", "verify") and unions the detections.
      * Returns detection with fromScriptsLint=true only when a recognizable linter name is found.
      */
     private LintConfigBundle.LinterDetection detectLinters(GitProvider gitProvider, String owner, String repo, String commitSha) {
@@ -162,12 +164,22 @@ public class LintConfigService {
             String packageJson = gitProvider.getFileContent(owner, repo, "package.json", commitSha);
             if (packageJson != null && !packageJson.isBlank()) {
                 JsonNode pkg = objectMapper.readTree(packageJson);
-                String lintScript = pkg.path("scripts").path("lint").asText("").toLowerCase();
-                if (!lintScript.isEmpty()) {
-                    boolean hasBiome = lintScript.contains("biome");
-                    boolean hasEslint = lintScript.contains("eslint");
+                JsonNode scripts = pkg.path("scripts");
+                if (scripts.isObject()) {
+                    boolean hasBiome = false;
+                    boolean hasEslint = false;
+                    var fields = scripts.fields();
+                    while (fields.hasNext()) {
+                        var entry = fields.next();
+                        String scriptName = entry.getKey().toLowerCase();
+                        if (isLintRelatedScriptName(scriptName)) {
+                            String scriptValue = entry.getValue().asText("").toLowerCase();
+                            if (scriptValue.contains("biome")) hasBiome = true;
+                            if (scriptValue.contains("eslint")) hasEslint = true;
+                        }
+                    }
                     if (hasBiome || hasEslint) {
-                        log.info("Detected linters from package.json scripts.lint: eslint={}, biome={}", hasEslint, hasBiome);
+                        log.info("Detected linters from package.json scripts: eslint={}, biome={}", hasEslint, hasBiome);
                         return new LintConfigBundle.LinterDetection(hasEslint, hasBiome, true);
                     }
                 }
@@ -176,5 +188,15 @@ public class LintConfigService {
             log.trace("Could not detect linters from package.json: {}", e.getMessage());
         }
         return LintConfigBundle.LinterDetection.defaultFallback();
+    }
+
+    /**
+     * Whether a script name is plausibly a lint/check/verify script.
+     * Matches: "lint", "lint:*", "check", "check:*", "verify".
+     */
+    private boolean isLintRelatedScriptName(String name) {
+        return name.equals("lint") || name.startsWith("lint:")
+            || name.equals("check") || name.startsWith("check:")
+            || name.equals("verify");
     }
 }
