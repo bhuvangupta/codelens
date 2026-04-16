@@ -340,7 +340,7 @@
 											<span class="text-slate-500">{review.totalIssues} issues</span>
 										{/if}
 										{#if review.status === 'FAILED'}
-											<button onclick={() => retryReview(review)} class="text-primary font-medium hover:text-secondary">Retry</button>
+											<button onclick={(e) => { e.preventDefault(); e.stopPropagation(); retryReview(review); }} class="text-primary font-medium hover:text-secondary">Retry</button>
 										{/if}
 									</div>
 								</div>
