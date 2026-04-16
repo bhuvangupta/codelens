@@ -144,12 +144,12 @@ run as-is. (CodeLens still applies severity mapping for security-related rule na
 
 ### Linter Detection (ESLint vs Biome)
 
-For JS/TS files, CodeLens parses `package.json` → `scripts.lint` to decide which linter(s) to run:
+For JS/TS files, CodeLens scans `package.json` scripts whose name is lint-related (`lint`, `lint:*`, `check`, `check:*`, `verify`) and unions the detections:
 
-- Contains `biome` → Biome enabled
-- Contains `eslint` → ESLint enabled
-- Contains both → both run in parallel (findings from both are surfaced)
-- Opaque or missing `scripts.lint` → ESLint always enabled (default); Biome enabled only if `biome.json` is present
+- Any matching script contains `biome` → Biome enabled
+- Any matching script contains `eslint` → ESLint enabled
+- Both tools found across matching scripts → both run in parallel (findings from both are surfaced)
+- No lint-related script or no recognizable tool → ESLint always enabled (default); Biome enabled only if `biome.json` is present
 
 ### Timeouts
 
