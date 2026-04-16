@@ -10,14 +10,18 @@ import com.puppycrawl.tools.checkstyle.api.AuditListener;
 import com.puppycrawl.tools.checkstyle.api.Configuration;
 import com.puppycrawl.tools.checkstyle.api.SeverityLevel;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import org.xml.sax.InputSource;
 
-import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
@@ -27,6 +31,14 @@ import java.util.Set;
 public class CheckstyleAnalyzer implements StaticAnalyzer {
 
     private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("java");
+
+    private static final List<String> CHECKSTYLE_CONFIG_FILES = List.of(
+        "checkstyle.xml",
+        "config/checkstyle/checkstyle.xml",
+        ".checkstyle.xml"
+    );
+
+    private static final String SECURITY_FLOOR_RESOURCE = "security-floor/checkstyle-security-floor.xml";
 
     private static final String DEFAULT_CONFIG = """
         <?xml version="1.0"?>
@@ -45,7 +57,6 @@ public class CheckstyleAnalyzer implements StaticAnalyzer {
                     <property name="ignoreSetter" value="true"/>
                     <property name="setterCanReturnItsClass" value="true"/>
                 </module>
-                <!-- Suppress HiddenField for with* builder methods -->
                 <module name="SuppressionXpathSingleFilter">
                     <property name="checks" value="HiddenField"/>
                     <property name="query" value="//METHOD_DEF[./IDENT[starts-with(@text, 'with')]]/PARAMETERS/PARAMETER_DEF"/>
@@ -73,6 +84,18 @@ public class CheckstyleAnalyzer implements StaticAnalyzer {
         </module>
         """;
 
+    /**
+     * Holds Checkstyle configuration fetched from the repository.
+     */
+    public record CheckstyleConfig(String configFilename, String configContent) {}
+
+    /**
+     * Get list of Checkstyle config file names to search for in a repo.
+     */
+    public static List<String> getConfigFileNames() {
+        return CHECKSTYLE_CONFIG_FILES;
+    }
+
     @Override
     public String getName() {
         return "checkstyle";
@@ -85,32 +108,37 @@ public class CheckstyleAnalyzer implements StaticAnalyzer {
 
     @Override
     public List<AnalysisIssue> analyze(String filename, String content) {
+        return analyzeWithConfig(filename, content, null);
+    }
+
+    /**
+     * Analyze with optional project config. If config is non-null, runs TWO passes:
+     *   1. With the project's config
+     *   2. With the security floor
+     * Then merges results and deduplicates by (filename, line, ruleId).
+     * If config is null, uses only the bundled DEFAULT_CONFIG.
+     */
+    public List<AnalysisIssue> analyzeWithConfig(String filename, String content, CheckstyleConfig config) {
         List<AnalysisIssue> issues = new ArrayList<>();
 
         try {
-            // Write content to temp file (Checkstyle requires file input)
             Path tempFile = Files.createTempFile("checkstyle", ".java");
             Files.writeString(tempFile, content);
 
             try {
-                Configuration config = ConfigurationLoader.loadConfiguration(
-                    new InputSource(new StringReader(DEFAULT_CONFIG)),
-                    new PropertiesExpander(new Properties()),
-                    ConfigurationLoader.IgnoredModulesOptions.OMIT
-                );
-
-                Checker checker = new Checker();
-                // Use Checkstyle's own classloader to find modules (fixes fat JAR issues)
-                checker.setModuleClassLoader(Checker.class.getClassLoader());
-                checker.configure(config);
-
-                IssueCollector collector = new IssueCollector(filename);
-                checker.addListener(collector);
-
-                checker.process(List.of(tempFile.toFile()));
-                issues.addAll(collector.getIssues());
-
-                checker.destroy();
+                if (config != null && config.configContent() != null && !config.configContent().isBlank()) {
+                    issues.addAll(runCheckstyle(tempFile, filename, config.configContent()));
+                    String securityFloorXml = loadSecurityFloor();
+                    if (securityFloorXml != null) {
+                        issues.addAll(runCheckstyle(tempFile, filename, securityFloorXml));
+                    }
+                    log.info("Checkstyle: Using project config from {} + security floor",
+                        config.configFilename());
+                    issues = deduplicateIssues(issues);
+                } else {
+                    issues.addAll(runCheckstyle(tempFile, filename, DEFAULT_CONFIG));
+                    log.debug("Checkstyle: Using bundled CodeLens default config");
+                }
             } finally {
                 Files.deleteIfExists(tempFile);
             }
@@ -119,6 +147,50 @@ public class CheckstyleAnalyzer implements StaticAnalyzer {
         }
 
         return issues;
+    }
+
+    private List<AnalysisIssue> runCheckstyle(Path tempFile, String originalFilename, String configXml)
+            throws Exception {
+        Configuration config = ConfigurationLoader.loadConfiguration(
+            new InputSource(new StringReader(configXml)),
+            new PropertiesExpander(new Properties()),
+            ConfigurationLoader.IgnoredModulesOptions.OMIT
+        );
+
+        Checker checker = new Checker();
+        checker.setModuleClassLoader(Checker.class.getClassLoader());
+        checker.configure(config);
+
+        IssueCollector collector = new IssueCollector(originalFilename);
+        checker.addListener(collector);
+
+        try {
+            checker.process(List.of(tempFile.toFile()));
+            return collector.getIssues();
+        } finally {
+            checker.destroy();
+        }
+    }
+
+    private String loadSecurityFloor() {
+        try (InputStream is = new ClassPathResource(SECURITY_FLOOR_RESOURCE).getInputStream()) {
+            return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            log.warn("Failed to load Checkstyle security floor: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private List<AnalysisIssue> deduplicateIssues(List<AnalysisIssue> issues) {
+        Set<String> seen = new HashSet<>();
+        List<AnalysisIssue> deduped = new ArrayList<>();
+        for (AnalysisIssue issue : issues) {
+            String key = issue.filePath() + ":" + issue.line() + ":" + issue.ruleId();
+            if (seen.add(key)) {
+                deduped.add(issue);
+            }
+        }
+        return deduped;
     }
 
     @Override
