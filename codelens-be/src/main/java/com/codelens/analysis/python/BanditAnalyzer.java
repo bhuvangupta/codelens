@@ -17,17 +17,33 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-/**
- * Bandit analyzer for Python security issues.
- * Bandit finds common security issues in Python code.
- */
 @Slf4j
 @Component
 public class BanditAnalyzer implements StaticAnalyzer {
 
     private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("py", "pyw", "pyi");
 
+    private static final List<String> BANDIT_CONFIG_FILES = List.of(
+        ".bandit",
+        "bandit.yaml",
+        "pyproject.toml"
+    );
+
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /**
+     * Holds Bandit configuration fetched from the repository.
+     */
+    public record BanditConfig(String configFilename, String configContent) {}
+
+    /**
+     * Get list of Bandit config file names to search for in a repo.
+     * Note: pyproject.toml only counts if it contains a [tool.bandit] section
+     * (caller should verify before constructing BanditConfig).
+     */
+    public static List<String> getConfigFileNames() {
+        return BANDIT_CONFIG_FILES;
+    }
 
     @Override
     public String getName() {
@@ -41,19 +57,58 @@ public class BanditAnalyzer implements StaticAnalyzer {
 
     @Override
     public List<AnalysisIssue> analyze(String filename, String content) {
+        return analyzeWithConfig(filename, content, null);
+    }
+
+    /**
+     * Analyze with optional project config. If config is non-null, writes the config
+     * to a temp dir, runs bandit with -c pointing at it, AND overrides severity to
+     * --severity-level low --confidence-level medium (security floor — repo can
+     * customize which tests run but cannot raise the severity threshold).
+     * If config is null, runs with -ll (medium+ severity, default behavior).
+     */
+    public List<AnalysisIssue> analyzeWithConfig(String filename, String content, BanditConfig config) {
         List<AnalysisIssue> issues = new ArrayList<>();
+        Path tempDir = null;
 
         try {
-            Path tempFile = Files.createTempFile("bandit", ".py");
-            Files.writeString(tempFile, content);
-
-            try {
-                issues = runBandit(tempFile.toString(), filename);
-            } finally {
-                Files.deleteIfExists(tempFile);
+            if (config != null && config.configContent() != null && !config.configContent().isBlank()) {
+                tempDir = Files.createTempDirectory("bandit-session-");
+                Path configPath = tempDir.resolve(config.configFilename());
+                Files.writeString(configPath, config.configContent());
+                Path sourceFile = tempDir.resolve("source.py");
+                Files.writeString(sourceFile, content);
+                issues = runBandit(sourceFile.toString(), filename, configPath.toString());
+                log.info("Bandit: Using project config from {} + severity floor (--severity-level low)",
+                    config.configFilename());
+            } else {
+                Path tempFile = Files.createTempFile("bandit", ".py");
+                Files.writeString(tempFile, content);
+                try {
+                    issues = runBandit(tempFile.toString(), filename, null);
+                    log.debug("Bandit: Using bundled CodeLens default (-ll)");
+                } finally {
+                    Files.deleteIfExists(tempFile);
+                }
             }
         } catch (Exception e) {
             log.warn("Bandit analysis failed for {}: {}", filename, e.getMessage());
+        } finally {
+            if (tempDir != null) {
+                try {
+                    Files.walk(tempDir)
+                        .sorted((a, b) -> b.compareTo(a))
+                        .forEach(p -> {
+                            try {
+                                Files.deleteIfExists(p);
+                            } catch (IOException e) {
+                                log.debug("Failed to delete temp file: {}", p);
+                            }
+                        });
+                } catch (IOException e) {
+                    log.debug("Failed to clean up Bandit temp dir: {}", tempDir);
+                }
+            }
         }
 
         return issues;
@@ -61,20 +116,31 @@ public class BanditAnalyzer implements StaticAnalyzer {
 
     @Override
     public List<AnalysisIssue> analyzeFile(String filePath) {
-        return runBandit(filePath, filePath);
+        return runBandit(filePath, filePath, null);
     }
 
-    private List<AnalysisIssue> runBandit(String actualPath, String reportedPath) {
+    private List<AnalysisIssue> runBandit(String actualPath, String reportedPath, String configPath) {
         List<AnalysisIssue> issues = new ArrayList<>();
         Process process = null;
 
         try {
-            ProcessBuilder pb = new ProcessBuilder(
-                "bandit",
-                "-f", "json",
-                "-ll",  // Only medium and high severity
-                actualPath
-            );
+            List<String> command = new ArrayList<>();
+            command.add("bandit");
+            command.add("-f");
+            command.add("json");
+            if (configPath != null) {
+                command.add("-c");
+                command.add(configPath);
+                command.add("--severity-level");
+                command.add("low");
+                command.add("--confidence-level");
+                command.add("medium");
+            } else {
+                command.add("-ll");
+            }
+            command.add(actualPath);
+
+            ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true);
 
             process = pb.start();
@@ -86,7 +152,6 @@ public class BanditAnalyzer implements StaticAnalyzer {
 
             process.waitFor();
 
-            // Parse JSON output
             if (!output.isEmpty() && output.contains("\"results\"")) {
                 JsonNode root = objectMapper.readTree(output);
                 JsonNode results = root.get("results");
@@ -118,13 +183,11 @@ public class BanditAnalyzer implements StaticAnalyzer {
         String confidence = result.has("issue_confidence") ? result.get("issue_confidence").asText() : "MEDIUM";
         int line = result.has("line_number") ? result.get("line_number").asInt() : 0;
 
-        // Get code snippet for context
         String codeSnippet = null;
         if (result.has("code") && !result.get("code").isNull()) {
             codeSnippet = result.get("code").asText();
         }
 
-        // More info URL
         String suggestion = null;
         if (result.has("more_info") && !result.get("more_info").isNull()) {
             suggestion = "See: " + result.get("more_info").asText();
@@ -147,7 +210,6 @@ public class BanditAnalyzer implements StaticAnalyzer {
     }
 
     private AnalysisIssue.Severity mapSeverity(String severity, String confidence) {
-        // High severity + High confidence = CRITICAL
         if ("HIGH".equalsIgnoreCase(severity) && "HIGH".equalsIgnoreCase(confidence)) {
             return AnalysisIssue.Severity.CRITICAL;
         }
