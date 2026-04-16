@@ -130,6 +130,31 @@ cannot be disabled by the project.
 **Security floor:** None enforced separately — ESLint rules from the project config
 run as-is. (CodeLens still applies severity mapping for security-related rule names.)
 
+### Biome (JavaScript/TypeScript)
+
+**Config files searched:**
+- `biome.json`, `biome.jsonc`
+
+**Security floor (always enforced):**
+- `lint/security/noDangerouslySetInnerHtml`
+- `lint/security/noDangerouslySetInnerHtmlWithChildren`
+- `lint/security/noGlobalEval`
+- `lint/suspicious/noDebugger`
+- `lint/suspicious/noEmptyInterface`
+
+### Linter Detection (ESLint vs Biome)
+
+For JS/TS files, CodeLens parses `package.json` → `scripts.lint` to decide which linter(s) to run:
+
+- Contains `biome` → Biome enabled
+- Contains `eslint` → ESLint enabled
+- Contains both → both run in parallel (findings from both are surfaced)
+- Opaque or missing `scripts.lint` → ESLint always enabled (default); Biome enabled only if `biome.json` is present
+
+### Timeouts
+
+All shell-based analyzers (ESLint, Biome, Ruff, Bandit) have a 10-minute hard timeout per file. If the subprocess doesn't finish within that window, it's killed and the file is analyzed by the remaining analyzers only.
+
 ### PMD (Java)
 
 **Config files searched:**
