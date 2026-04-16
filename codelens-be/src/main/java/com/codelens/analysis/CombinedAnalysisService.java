@@ -1,14 +1,18 @@
 package com.codelens.analysis;
 
 import com.codelens.analysis.java.CheckstyleAnalyzer;
+import com.codelens.analysis.java.CheckstyleAnalyzer.CheckstyleConfig;
 import com.codelens.analysis.java.PmdAnalyzer;
+import com.codelens.analysis.java.PmdAnalyzer.PmdConfig;
 import com.codelens.analysis.java.SpotBugsAnalyzer;
 import com.codelens.analysis.javascript.EslintAnalyzer;
 import com.codelens.analysis.javascript.EslintAnalyzer.EslintConfig;
 import com.codelens.analysis.javascript.NpmAuditAnalyzer;
-import com.codelens.analysis.python.RuffAnalyzer;
 import com.codelens.analysis.python.BanditAnalyzer;
+import com.codelens.analysis.python.BanditAnalyzer.BanditConfig;
 import com.codelens.analysis.python.PipAuditAnalyzer;
+import com.codelens.analysis.python.RuffAnalyzer;
+import com.codelens.analysis.python.RuffAnalyzer.RuffConfig;
 import com.codelens.analysis.go.StaticcheckAnalyzer;
 import com.codelens.analysis.go.GosecAnalyzer;
 import com.codelens.analysis.rust.ClippyAnalyzer;
@@ -122,7 +126,7 @@ public class CombinedAnalysisService {
      * Analyze a single file (without custom rules or ESLint config)
      */
     public List<AnalysisIssue> analyzeFile(String filename, String content) {
-        return analyzeFile(filename, content, null, null);
+        return analyzeFile(filename, content, null, (EslintConfig) null);
     }
 
     /**
@@ -133,7 +137,7 @@ public class CombinedAnalysisService {
      * @param organizationId The organization ID for custom rules (can be null)
      */
     public List<AnalysisIssue> analyzeFile(String filename, String content, UUID organizationId) {
-        return analyzeFile(filename, content, organizationId, null);
+        return analyzeFile(filename, content, organizationId, (EslintConfig) null);
     }
 
     /**
@@ -163,6 +167,40 @@ public class CombinedAnalysisService {
         }
 
         // Apply custom rules if available
+        if (customRuleAnalyzer != null && customRuleAnalyzer.isAvailable()) {
+            List<AnalysisIssue> customIssues = customRuleAnalyzer.analyze(filename, content, organizationId);
+            allIssues.addAll(customIssues);
+        }
+
+        log.info("Found {} issues in {}", allIssues.size(), filename);
+        return allIssues;
+    }
+
+    /**
+     * Analyze a single file with custom rules and a full lint config bundle.
+     * The bundle may contain configs for ESLint, PMD, Checkstyle, Ruff, Bandit.
+     * Each analyzer uses its config if non-null, or its bundled CodeLens default.
+     */
+    public List<AnalysisIssue> analyzeFile(String filename, String content, UUID organizationId,
+                                            LintConfigBundle configBundle) {
+        List<AnalysisIssue> allIssues = new ArrayList<>();
+
+        if (!languageDetector.shouldAnalyze(filename)) {
+            log.debug("Skipping analysis for unsupported file: {}", filename);
+            return allIssues;
+        }
+
+        AnalysisLanguageDetector.Language language = languageDetector.detect(filename);
+        log.debug("Analyzing {} as {}", filename, language);
+
+        LintConfigBundle bundle = configBundle != null ? configBundle : LintConfigBundle.empty();
+
+        if (runInParallel) {
+            allIssues = analyzeInParallelWithBundle(filename, content, language, bundle);
+        } else {
+            allIssues = analyzeSequentiallyWithBundle(filename, content, language, bundle);
+        }
+
         if (customRuleAnalyzer != null && customRuleAnalyzer.isAvailable()) {
             List<AnalysisIssue> customIssues = customRuleAnalyzer.analyze(filename, content, organizationId);
             allIssues.addAll(customIssues);
@@ -327,6 +365,141 @@ public class CombinedAnalysisService {
         }
 
         // Rust analyzers
+        if (language == AnalysisLanguageDetector.Language.RUST) {
+            if (clippyAnalyzer.isAvailable()) {
+                allIssues.addAll(clippyAnalyzer.analyze(filename, content));
+            }
+        }
+
+        return allIssues;
+    }
+
+    private List<AnalysisIssue> analyzeInParallelWithBundle(String filename, String content,
+            AnalysisLanguageDetector.Language language, LintConfigBundle bundle) {
+        List<CompletableFuture<List<AnalysisIssue>>> futures = new ArrayList<>();
+
+        if (language == AnalysisLanguageDetector.Language.JAVA || language == AnalysisLanguageDetector.Language.KOTLIN) {
+            if (pmdAnalyzer.isAvailable()) {
+                PmdConfig pmdConfig = bundle.pmdConfig();
+                futures.add(CompletableFuture.supplyAsync(
+                    () -> pmdAnalyzer.analyzeWithConfig(filename, content, pmdConfig), executor
+                ));
+            }
+            if (spotBugsAnalyzer.isAvailable()) {
+                futures.add(CompletableFuture.supplyAsync(
+                    () -> spotBugsAnalyzer.analyze(filename, content), executor
+                ));
+            }
+            if (checkstyleAnalyzer.isAvailable()) {
+                CheckstyleConfig csConfig = bundle.checkstyleConfig();
+                futures.add(CompletableFuture.supplyAsync(
+                    () -> checkstyleAnalyzer.analyzeWithConfig(filename, content, csConfig), executor
+                ));
+            }
+        }
+
+        if (languageDetector.isJavaScriptFamily(filename)) {
+            if (eslintAnalyzer.isAvailable()) {
+                EslintConfig eslintConfig = bundle.eslintConfig();
+                futures.add(CompletableFuture.supplyAsync(() -> {
+                    if (eslintConfig != null) {
+                        return eslintAnalyzer.analyzeWithConfig(
+                            filename, content, eslintConfig.configFilename(), eslintConfig.configContent());
+                    } else {
+                        return eslintAnalyzer.analyze(filename, content);
+                    }
+                }, executor));
+            }
+        }
+
+        if (language == AnalysisLanguageDetector.Language.PYTHON) {
+            if (ruffAnalyzer.isAvailable()) {
+                RuffConfig ruffConfig = bundle.ruffConfig();
+                futures.add(CompletableFuture.supplyAsync(
+                    () -> ruffAnalyzer.analyzeWithConfig(filename, content, ruffConfig), executor
+                ));
+            }
+            if (banditAnalyzer.isAvailable()) {
+                BanditConfig banditConfig = bundle.banditConfig();
+                futures.add(CompletableFuture.supplyAsync(
+                    () -> banditAnalyzer.analyzeWithConfig(filename, content, banditConfig), executor
+                ));
+            }
+        }
+
+        if (language == AnalysisLanguageDetector.Language.GO) {
+            if (staticcheckAnalyzer.isAvailable()) {
+                futures.add(CompletableFuture.supplyAsync(
+                    () -> staticcheckAnalyzer.analyze(filename, content), executor
+                ));
+            }
+            if (gosecAnalyzer.isAvailable()) {
+                futures.add(CompletableFuture.supplyAsync(
+                    () -> gosecAnalyzer.analyze(filename, content), executor
+                ));
+            }
+        }
+
+        if (language == AnalysisLanguageDetector.Language.RUST) {
+            if (clippyAnalyzer.isAvailable()) {
+                futures.add(CompletableFuture.supplyAsync(
+                    () -> clippyAnalyzer.analyze(filename, content), executor
+                ));
+            }
+        }
+
+        return futures.stream()
+            .map(CompletableFuture::join)
+            .flatMap(List::stream)
+            .collect(Collectors.toList());
+    }
+
+    private List<AnalysisIssue> analyzeSequentiallyWithBundle(String filename, String content,
+            AnalysisLanguageDetector.Language language, LintConfigBundle bundle) {
+        List<AnalysisIssue> allIssues = new ArrayList<>();
+
+        if (language == AnalysisLanguageDetector.Language.JAVA || language == AnalysisLanguageDetector.Language.KOTLIN) {
+            if (pmdAnalyzer.isAvailable()) {
+                allIssues.addAll(pmdAnalyzer.analyzeWithConfig(filename, content, bundle.pmdConfig()));
+            }
+            if (spotBugsAnalyzer.isAvailable()) {
+                allIssues.addAll(spotBugsAnalyzer.analyze(filename, content));
+            }
+            if (checkstyleAnalyzer.isAvailable()) {
+                allIssues.addAll(checkstyleAnalyzer.analyzeWithConfig(filename, content, bundle.checkstyleConfig()));
+            }
+        }
+
+        if (languageDetector.isJavaScriptFamily(filename)) {
+            if (eslintAnalyzer.isAvailable()) {
+                EslintConfig eslintConfig = bundle.eslintConfig();
+                if (eslintConfig != null) {
+                    allIssues.addAll(eslintAnalyzer.analyzeWithConfig(
+                        filename, content, eslintConfig.configFilename(), eslintConfig.configContent()));
+                } else {
+                    allIssues.addAll(eslintAnalyzer.analyze(filename, content));
+                }
+            }
+        }
+
+        if (language == AnalysisLanguageDetector.Language.PYTHON) {
+            if (ruffAnalyzer.isAvailable()) {
+                allIssues.addAll(ruffAnalyzer.analyzeWithConfig(filename, content, bundle.ruffConfig()));
+            }
+            if (banditAnalyzer.isAvailable()) {
+                allIssues.addAll(banditAnalyzer.analyzeWithConfig(filename, content, bundle.banditConfig()));
+            }
+        }
+
+        if (language == AnalysisLanguageDetector.Language.GO) {
+            if (staticcheckAnalyzer.isAvailable()) {
+                allIssues.addAll(staticcheckAnalyzer.analyze(filename, content));
+            }
+            if (gosecAnalyzer.isAvailable()) {
+                allIssues.addAll(gosecAnalyzer.analyze(filename, content));
+            }
+        }
+
         if (language == AnalysisLanguageDetector.Language.RUST) {
             if (clippyAnalyzer.isAvailable()) {
                 allIssues.addAll(clippyAnalyzer.analyze(filename, content));
