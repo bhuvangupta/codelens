@@ -111,6 +111,73 @@ CodeLens automatically detects and uses your project's ESLint configuration for 
 
 When found, ESLint runs with your project's rules instead of global defaults.
 
+## Lint Configuration Pickup
+
+CodeLens automatically picks up lint configurations from the repo being reviewed.
+For each analyzer below, the listed config files are searched (in order) at the
+PR head commit. The first match is used in place of the bundled CodeLens default.
+
+A **security floor** is always enforced on top of the repo's config — these rules
+cannot be disabled by the project.
+
+### ESLint (JavaScript/TypeScript)
+
+**Config files searched:**
+- `.eslintrc`, `.eslintrc.js`, `.eslintrc.cjs`, `.eslintrc.json`, `.eslintrc.yaml`, `.eslintrc.yml`
+- `eslint.config.js`, `eslint.config.mjs`, `eslint.config.cjs` (flat config)
+- `package.json` (the `eslintConfig` field)
+
+**Security floor:** None enforced separately — ESLint rules from the project config
+run as-is. (CodeLens still applies severity mapping for security-related rule names.)
+
+### PMD (Java)
+
+**Config files searched:**
+- `pmd-ruleset.xml`, `.pmd-ruleset.xml`, `config/pmd/ruleset.xml`
+
+**Security floor (always enforced):**
+- All rules from PMD's `category/java/security.xml`
+- `errorprone/AvoidCatchingThrowable`, `errorprone/EmptyCatchBlock`, `errorprone/AvoidLiteralsInIfCondition`
+
+### Checkstyle (Java)
+
+**Config files searched:**
+- `checkstyle.xml`, `config/checkstyle/checkstyle.xml`, `.checkstyle.xml`
+
+**Security floor (always enforced):**
+- `EmptyCatchBlock`
+- `IllegalCatch`
+- `IllegalThrows`
+- `NoClone`
+- `NoFinalizer`
+
+### Ruff (Python)
+
+**Config files searched:**
+- `ruff.toml`, `.ruff.toml`
+- `pyproject.toml` (only when it contains a `[tool.ruff]` section)
+
+**Security floor (always enforced):**
+- `--extend-select S` (flake8-bandit security rules)
+- `--extend-select B` (flake8-bugbear bug-prone patterns)
+
+### Bandit (Python)
+
+**Config files searched:**
+- `.bandit`, `bandit.yaml`
+- `pyproject.toml` (only when it contains a `[tool.bandit]` section)
+
+**Security floor (always enforced):**
+- `--severity-level low` (cannot raise the severity threshold)
+- `--confidence-level medium` (medium and high confidence findings always surface)
+
+### Behavior Notes
+
+- If no project config is found, the bundled CodeLens defaults are used (current behavior, unchanged).
+- If a project config is malformed or fails to load, a WARN log is emitted and the analyzer falls back to defaults.
+- Configs are fetched from the **PR's head branch**, not main. New rules added in a PR apply to that PR's review.
+- Security floor rules cannot be disabled by repo config — they are layered on top.
+
 ### Custom Review Rules (Per-Repository)
 
 Add project-specific review rules by creating `.codelens/review-rules.md` in your repository:
