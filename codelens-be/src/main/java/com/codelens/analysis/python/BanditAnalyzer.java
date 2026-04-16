@@ -151,6 +151,7 @@ public class BanditAnalyzer implements StaticAnalyzer {
             }
 
             process.waitFor();
+            int exitCode = process.exitValue();
 
             if (!output.isEmpty() && output.contains("\"results\"")) {
                 JsonNode root = objectMapper.readTree(output);
@@ -160,6 +161,10 @@ public class BanditAnalyzer implements StaticAnalyzer {
                         issues.add(parseResult(result, reportedPath));
                     }
                 }
+            } else if (!output.isEmpty() && !output.contains("\"results\"")) {
+                // Output is non-empty but not valid Bandit JSON — likely a config error.
+                String truncated = output.length() > 500 ? output.substring(0, 500) + "..." : output;
+                log.warn("Bandit exited {} with non-JSON output for {}: {}", exitCode, reportedPath, truncated);
             }
         } catch (IOException e) {
             log.warn("Bandit I/O error: {}", e.getMessage());

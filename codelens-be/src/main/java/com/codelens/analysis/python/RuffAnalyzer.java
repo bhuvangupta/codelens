@@ -157,12 +157,18 @@ public class RuffAnalyzer implements StaticAnalyzer {
             }
 
             process.waitFor();
+            int exitCode = process.exitValue();
 
             if (!output.isEmpty() && output.startsWith("[")) {
                 JsonNode results = objectMapper.readTree(output);
                 for (JsonNode result : results) {
                     issues.add(parseResult(result, reportedPath));
                 }
+            } else if (exitCode != 0 && !output.isEmpty()) {
+                // Ruff exits non-zero by design when it finds lint issues, so only treat
+                // non-JSON output as an error condition (e.g. malformed config).
+                String truncated = output.length() > 500 ? output.substring(0, 500) + "..." : output;
+                log.warn("Ruff exited {} with non-JSON output for {}: {}", exitCode, reportedPath, truncated);
             }
         } catch (IOException e) {
             log.warn("Ruff I/O error: {}", e.getMessage());
