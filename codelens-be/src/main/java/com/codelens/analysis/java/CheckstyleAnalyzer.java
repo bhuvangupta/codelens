@@ -85,6 +85,17 @@ public class CheckstyleAnalyzer implements StaticAnalyzer {
         """;
 
     /**
+     * Detect if a Checkstyle config references external files via property name="file".
+     * SuppressionFilter, SuppressionXpathFilter, ImportControl, RegexpHeader etc. all use this pattern.
+     */
+    private static boolean referencesExternalFiles(String configContent) {
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+            "<property\\s+name=\"file\"\\s+value=\"([^\"]+)\""
+        );
+        return p.matcher(configContent).find();
+    }
+
+    /**
      * Holds Checkstyle configuration fetched from the repository.
      */
     public record CheckstyleConfig(String configFilename, String configContent) {}
@@ -130,16 +141,28 @@ public class CheckstyleAnalyzer implements StaticAnalyzer {
 
             if (config != null && config.configContent() != null && !config.configContent().isBlank()) {
                 // Pass 1: project config (best-effort; fall back to default on failure)
-                try {
-                    issues.addAll(runCheckstyle(tempFile, filename, config.configContent()));
-                    log.info("Checkstyle: Using project config from {}", config.configFilename());
-                } catch (Exception e) {
-                    log.warn("Checkstyle project config {} failed to parse, falling back to default: {}",
-                        config.configFilename(), e.getMessage());
+                if (referencesExternalFiles(config.configContent())) {
+                    log.warn("Checkstyle project config {} references external files (e.g., suppressions XML). " +
+                             "CodeLens cannot fetch sibling files — falling back to bundled default. " +
+                             "To use a project config, inline all suppressions and remove file= property references.",
+                             config.configFilename());
                     try {
                         issues.addAll(runCheckstyle(tempFile, filename, DEFAULT_CONFIG));
-                    } catch (Exception ex) {
-                        log.warn("Checkstyle default config also failed: {}", ex.getMessage());
+                    } catch (Exception e) {
+                        log.warn("Checkstyle default config failed: {}", e.getMessage());
+                    }
+                } else {
+                    try {
+                        issues.addAll(runCheckstyle(tempFile, filename, config.configContent()));
+                        log.info("Checkstyle: Using project config from {}", config.configFilename());
+                    } catch (Exception e) {
+                        log.warn("Checkstyle project config {} failed to parse, falling back to default: {}",
+                            config.configFilename(), e.getMessage());
+                        try {
+                            issues.addAll(runCheckstyle(tempFile, filename, DEFAULT_CONFIG));
+                        } catch (Exception ex) {
+                            log.warn("Checkstyle default config also failed: {}", ex.getMessage());
+                        }
                     }
                 }
 
