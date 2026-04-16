@@ -5,6 +5,8 @@ import com.codelens.analysis.java.CheckstyleAnalyzer.CheckstyleConfig;
 import com.codelens.analysis.java.PmdAnalyzer;
 import com.codelens.analysis.java.PmdAnalyzer.PmdConfig;
 import com.codelens.analysis.java.SpotBugsAnalyzer;
+import com.codelens.analysis.javascript.BiomeAnalyzer;
+import com.codelens.analysis.javascript.BiomeAnalyzer.BiomeConfig;
 import com.codelens.analysis.javascript.EslintAnalyzer;
 import com.codelens.analysis.javascript.EslintAnalyzer.EslintConfig;
 import com.codelens.analysis.javascript.NpmAuditAnalyzer;
@@ -42,6 +44,7 @@ public class CombinedAnalysisService {
     private final CheckstyleAnalyzer checkstyleAnalyzer;
     // JavaScript/TypeScript analyzers
     private final EslintAnalyzer eslintAnalyzer;
+    private final BiomeAnalyzer biomeAnalyzer;
     private final NpmAuditAnalyzer npmAuditAnalyzer;
     // Python analyzers
     private final RuffAnalyzer ruffAnalyzer;
@@ -99,6 +102,7 @@ public class CombinedAnalysisService {
             SpotBugsAnalyzer spotBugsAnalyzer,
             CheckstyleAnalyzer checkstyleAnalyzer,
             EslintAnalyzer eslintAnalyzer,
+            BiomeAnalyzer biomeAnalyzer,
             NpmAuditAnalyzer npmAuditAnalyzer,
             RuffAnalyzer ruffAnalyzer,
             BanditAnalyzer banditAnalyzer,
@@ -112,6 +116,7 @@ public class CombinedAnalysisService {
         this.spotBugsAnalyzer = spotBugsAnalyzer;
         this.checkstyleAnalyzer = checkstyleAnalyzer;
         this.eslintAnalyzer = eslintAnalyzer;
+        this.biomeAnalyzer = biomeAnalyzer;
         this.npmAuditAnalyzer = npmAuditAnalyzer;
         this.ruffAnalyzer = ruffAnalyzer;
         this.banditAnalyzer = banditAnalyzer;
@@ -399,7 +404,18 @@ public class CombinedAnalysisService {
         }
 
         if (languageDetector.isJavaScriptFamily(filename)) {
-            if (eslintAnalyzer.isAvailable()) {
+            LintConfigBundle.LinterDetection detection = bundle.linterDetection();
+            boolean runEslint;
+            boolean runBiome;
+            if (detection != null && detection.fromScriptsLint()) {
+                runEslint = detection.eslintEnabled();
+                runBiome = detection.biomeEnabled();
+            } else {
+                // Fallback: ESLint always on (current behavior), Biome on only if biome.json present
+                runEslint = true;
+                runBiome = bundle.biomeConfig() != null;
+            }
+            if (runEslint && eslintAnalyzer.isAvailable()) {
                 EslintConfig eslintConfig = bundle.eslintConfig();
                 futures.add(CompletableFuture.supplyAsync(() -> {
                     if (eslintConfig != null) {
@@ -409,6 +425,12 @@ public class CombinedAnalysisService {
                         return eslintAnalyzer.analyze(filename, content);
                     }
                 }, executor));
+            }
+            if (runBiome && biomeAnalyzer.isAvailable()) {
+                BiomeConfig biomeConfig = bundle.biomeConfig();
+                futures.add(CompletableFuture.supplyAsync(
+                    () -> biomeAnalyzer.analyzeWithConfig(filename, content, biomeConfig), executor
+                ));
             }
         }
 
@@ -471,7 +493,17 @@ public class CombinedAnalysisService {
         }
 
         if (languageDetector.isJavaScriptFamily(filename)) {
-            if (eslintAnalyzer.isAvailable()) {
+            LintConfigBundle.LinterDetection detection = bundle.linterDetection();
+            boolean runEslint;
+            boolean runBiome;
+            if (detection != null && detection.fromScriptsLint()) {
+                runEslint = detection.eslintEnabled();
+                runBiome = detection.biomeEnabled();
+            } else {
+                runEslint = true;
+                runBiome = bundle.biomeConfig() != null;
+            }
+            if (runEslint && eslintAnalyzer.isAvailable()) {
                 EslintConfig eslintConfig = bundle.eslintConfig();
                 if (eslintConfig != null) {
                     allIssues.addAll(eslintAnalyzer.analyzeWithConfig(
@@ -479,6 +511,9 @@ public class CombinedAnalysisService {
                 } else {
                     allIssues.addAll(eslintAnalyzer.analyze(filename, content));
                 }
+            }
+            if (runBiome && biomeAnalyzer.isAvailable()) {
+                allIssues.addAll(biomeAnalyzer.analyzeWithConfig(filename, content, bundle.biomeConfig()));
             }
         }
 
@@ -553,6 +588,7 @@ public class CombinedAnalysisService {
 
         // JavaScript/TypeScript analyzers
         analyzers.add(new AnalyzerInfo("eslint", "ESLint", "JavaScript/TypeScript", eslintAnalyzer.isAvailable()));
+        analyzers.add(new AnalyzerInfo("biome", "Biome", "JavaScript/TypeScript", biomeAnalyzer.isAvailable()));
         analyzers.add(new AnalyzerInfo("npm-audit", "NPM Audit", "JavaScript/TypeScript", npmAuditAnalyzer.isAvailable()));
 
         // Python analyzers
