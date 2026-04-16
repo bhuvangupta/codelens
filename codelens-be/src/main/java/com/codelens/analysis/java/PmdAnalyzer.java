@@ -62,6 +62,18 @@ public class PmdAnalyzer implements StaticAnalyzer {
     }
 
     /**
+     * Detect if a PMD ruleset references external files (rule refs that aren't PMD built-ins).
+     * Built-in rule refs start with "category/" (e.g., "category/java/security.xml").
+     * Anything else is likely a sibling file in the repo that we can't fetch.
+     */
+    private static boolean referencesExternalFiles(String configContent) {
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+            "<rule\\s+ref=\"(?!category/|rulesets/)([^\"]+\\.xml)[\"#]"
+        );
+        return p.matcher(configContent).find();
+    }
+
+    /**
      * Analyze with optional project ruleset. If config is non-null, runs TWO separate
      * analysis passes so that a malformed repo ruleset cannot silently disable the
      * security floor:
@@ -76,21 +88,12 @@ public class PmdAnalyzer implements StaticAnalyzer {
 
         try {
             if (config != null && config.configContent() != null && !config.configContent().isBlank()) {
-                tempRulesetFile = Files.createTempFile("pmd-ruleset-", ".xml");
-                Files.writeString(tempRulesetFile, config.configContent());
-
-                // Pass 1: project ruleset (best-effort; fall back to default on failure)
-                try {
-                    PMDConfiguration pmdConfig = new PMDConfiguration();
-                    pmdConfig.setDefaultLanguageVersion(
-                        LanguageRegistry.PMD.getLanguageById("java").getDefaultVersion()
-                    );
-                    pmdConfig.addRuleSet(tempRulesetFile.toString());
-                    issues.addAll(runPmdAnalysis(pmdConfig, filename, content));
-                    log.info("PMD: Using project ruleset from {}", config.configFilename());
-                } catch (Exception e) {
-                    log.warn("PMD project ruleset {} failed, falling back to default: {}",
-                        config.configFilename(), e.getMessage());
+                if (referencesExternalFiles(config.configContent())) {
+                    log.warn("PMD project ruleset {} references external rulesets in the repo. " +
+                             "CodeLens cannot fetch sibling files — falling back to bundled default. " +
+                             "To use a project ruleset, inline all <rule ref> references.",
+                             config.configFilename());
+                    // Skip pass 1 entirely; go straight to default
                     try {
                         PMDConfiguration fallbackConfig = new PMDConfiguration();
                         fallbackConfig.setDefaultLanguageVersion(
@@ -99,7 +102,34 @@ public class PmdAnalyzer implements StaticAnalyzer {
                         fallbackConfig.addRuleSet(DEFAULT_RULESET);
                         issues.addAll(runPmdAnalysis(fallbackConfig, filename, content));
                     } catch (Exception ex) {
-                        log.warn("PMD default ruleset also failed: {}", ex.getMessage());
+                        log.warn("PMD default ruleset failed: {}", ex.getMessage());
+                    }
+                } else {
+                    tempRulesetFile = Files.createTempFile("pmd-ruleset-", ".xml");
+                    Files.writeString(tempRulesetFile, config.configContent());
+
+                    // Pass 1: project ruleset (best-effort; fall back to default on failure)
+                    try {
+                        PMDConfiguration pmdConfig = new PMDConfiguration();
+                        pmdConfig.setDefaultLanguageVersion(
+                            LanguageRegistry.PMD.getLanguageById("java").getDefaultVersion()
+                        );
+                        pmdConfig.addRuleSet(tempRulesetFile.toString());
+                        issues.addAll(runPmdAnalysis(pmdConfig, filename, content));
+                        log.info("PMD: Using project ruleset from {}", config.configFilename());
+                    } catch (Exception e) {
+                        log.warn("PMD project ruleset {} failed, falling back to default: {}",
+                            config.configFilename(), e.getMessage());
+                        try {
+                            PMDConfiguration fallbackConfig = new PMDConfiguration();
+                            fallbackConfig.setDefaultLanguageVersion(
+                                LanguageRegistry.PMD.getLanguageById("java").getDefaultVersion()
+                            );
+                            fallbackConfig.addRuleSet(DEFAULT_RULESET);
+                            issues.addAll(runPmdAnalysis(fallbackConfig, filename, content));
+                        } catch (Exception ex) {
+                            log.warn("PMD default ruleset also failed: {}", ex.getMessage());
+                        }
                     }
                 }
 
