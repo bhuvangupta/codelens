@@ -112,38 +112,66 @@ public class CheckstyleAnalyzer implements StaticAnalyzer {
     }
 
     /**
-     * Analyze with optional project config. If config is non-null, runs TWO passes:
-     *   1. With the project's config
-     *   2. With the security floor
-     * Then merges results and deduplicates by (filename, line, ruleId).
+     * Analyze with optional project config. If config is non-null, runs TWO passes with
+     * each wrapped in its own try/catch so a malformed project config cannot prevent the
+     * security floor from running:
+     *   Pass 1 – project config (on failure, falls back to DEFAULT_CONFIG).
+     *   Pass 2 – security floor (always runs regardless of pass 1 outcome).
+     * Then deduplicates by (filename, line, ruleId).
      * If config is null, uses only the bundled DEFAULT_CONFIG.
      */
     public List<AnalysisIssue> analyzeWithConfig(String filename, String content, CheckstyleConfig config) {
         List<AnalysisIssue> issues = new ArrayList<>();
 
+        Path tempFile = null;
         try {
-            Path tempFile = Files.createTempFile("checkstyle", ".java");
+            tempFile = Files.createTempFile("checkstyle", ".java");
             Files.writeString(tempFile, content);
 
-            try {
-                if (config != null && config.configContent() != null && !config.configContent().isBlank()) {
+            if (config != null && config.configContent() != null && !config.configContent().isBlank()) {
+                // Pass 1: project config (best-effort; fall back to default on failure)
+                try {
                     issues.addAll(runCheckstyle(tempFile, filename, config.configContent()));
-                    String securityFloorXml = loadSecurityFloor();
-                    if (securityFloorXml != null) {
-                        issues.addAll(runCheckstyle(tempFile, filename, securityFloorXml));
+                    log.info("Checkstyle: Using project config from {}", config.configFilename());
+                } catch (Exception e) {
+                    log.warn("Checkstyle project config {} failed to parse, falling back to default: {}",
+                        config.configFilename(), e.getMessage());
+                    try {
+                        issues.addAll(runCheckstyle(tempFile, filename, DEFAULT_CONFIG));
+                    } catch (Exception ex) {
+                        log.warn("Checkstyle default config also failed: {}", ex.getMessage());
                     }
-                    log.info("Checkstyle: Using project config from {} + security floor",
-                        config.configFilename());
-                    issues = deduplicateIssues(issues);
-                } else {
+                }
+
+                // Pass 2: security floor — always runs regardless of repo config success/failure
+                String securityFloorXml = loadSecurityFloor();
+                if (securityFloorXml != null) {
+                    try {
+                        issues.addAll(runCheckstyle(tempFile, filename, securityFloorXml));
+                    } catch (Exception e) {
+                        log.warn("Checkstyle security floor failed: {}", e.getMessage());
+                    }
+                }
+
+                issues = deduplicateIssues(issues);
+            } else {
+                try {
                     issues.addAll(runCheckstyle(tempFile, filename, DEFAULT_CONFIG));
                     log.debug("Checkstyle: Using bundled CodeLens default config");
+                } catch (Exception e) {
+                    log.warn("Checkstyle default config failed: {}", e.getMessage());
                 }
-            } finally {
-                Files.deleteIfExists(tempFile);
             }
         } catch (Exception e) {
             log.warn("Checkstyle analysis failed for {}: {}", filename, e.getMessage());
+        } finally {
+            if (tempFile != null) {
+                try {
+                    Files.deleteIfExists(tempFile);
+                } catch (IOException e) {
+                    log.debug("Failed to delete temp Checkstyle file: {}", tempFile);
+                }
+            }
         }
 
         return issues;
