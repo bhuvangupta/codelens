@@ -150,7 +150,12 @@ public class BanditAnalyzer implements StaticAnalyzer {
                 output = reader.lines().collect(Collectors.joining("\n"));
             }
 
-            process.waitFor();
+            boolean finished = process.waitFor(10, java.util.concurrent.TimeUnit.MINUTES);
+            if (!finished) {
+                log.warn("Bandit timed out after 10 minutes for {}", reportedPath);
+                process.destroyForcibly();
+                return issues;
+            }
             int exitCode = process.exitValue();
 
             if (!output.isEmpty() && output.contains("\"results\"")) {
