@@ -56,7 +56,7 @@ public class BiomeAnalyzer implements StaticAnalyzer {
                 try {
                     Path configPath = tempDir.resolve(config.configFilename());
                     Files.writeString(configPath, config.configContent());
-                    issues.addAll(runBiome(sourceFile, filename, tempDir));
+                    issues.addAll(runBiome(sourceFile, filename, tempDir, content));
                     log.info("Biome: Using project config from {}", config.configFilename());
                 } catch (Exception e) {
                     log.warn("Biome project config {} failed, falling back to default: {}",
@@ -70,7 +70,7 @@ public class BiomeAnalyzer implements StaticAnalyzer {
                     Path floorSource = floorDir.resolve("source." + extension);
                     Files.writeString(floorSource, content);
                     try {
-                        issues.addAll(runBiome(floorSource, filename, floorDir));
+                        issues.addAll(runBiome(floorSource, filename, floorDir, content));
                     } finally {
                         deleteRecursively(floorDir);
                     }
@@ -86,7 +86,7 @@ public class BiomeAnalyzer implements StaticAnalyzer {
                     Files.writeString(configPath, floor);
                 }
                 try {
-                    issues.addAll(runBiome(sourceFile, filename, tempDir));
+                    issues.addAll(runBiome(sourceFile, filename, tempDir, content));
                     log.debug("Biome: Using bundled CodeLens default");
                 } catch (Exception e) {
                     log.warn("Biome default analysis failed: {}", e.getMessage());
@@ -108,10 +108,16 @@ public class BiomeAnalyzer implements StaticAnalyzer {
     }
 
     private List<AnalysisIssue> runBiomeFromPath(String actualPath, String reportedPath) {
-        return runBiome(Path.of(actualPath), reportedPath, null);
+        try {
+            String content = Files.readString(Path.of(actualPath));
+            return runBiome(Path.of(actualPath), reportedPath, null, content);
+        } catch (IOException e) {
+            log.warn("Biome: Failed to read file {}: {}", actualPath, e.getMessage());
+            return List.of();
+        }
     }
 
-    private List<AnalysisIssue> runBiome(Path sourceFile, String reportedPath, Path workingDirectory) {
+    private List<AnalysisIssue> runBiome(Path sourceFile, String reportedPath, Path workingDirectory, String sourceContent) {
         List<AnalysisIssue> issues = new ArrayList<>();
         Process process = null;
         try {
@@ -142,7 +148,7 @@ public class BiomeAnalyzer implements StaticAnalyzer {
             JsonNode diagnostics = root.path("diagnostics");
             if (diagnostics.isArray()) {
                 for (JsonNode diag : diagnostics) {
-                    issues.add(parseDiagnostic(diag, reportedPath));
+                    issues.add(parseDiagnostic(diag, reportedPath, sourceContent));
                 }
             }
         } catch (IOException e) {
@@ -160,20 +166,20 @@ public class BiomeAnalyzer implements StaticAnalyzer {
         return issues;
     }
 
-    private AnalysisIssue parseDiagnostic(JsonNode diag, String filePath) {
+    private AnalysisIssue parseDiagnostic(JsonNode diag, String filePath, String sourceContent) {
         String category = diag.path("category").asText("unknown");
         String severity = diag.path("severity").asText("warning");
         String message = diag.path("description").asText("");
 
-        int line = 1, column = 1;
+        // Extract byte offset from location.span [start, end]
+        int startByte = 0;
         JsonNode locationSpan = diag.path("location").path("span");
         if (locationSpan.isArray() && locationSpan.size() > 0) {
-            // Biome gives byte offsets; default to line 1 when we can't map — the source
-            // resolver in the LLM review prompt will surface the message with the file path.
-            line = diag.path("location").path("sourceCode").path("line").asInt(1);
-        } else if (locationSpan.has("start")) {
-            line = locationSpan.path("start").asInt(1);
+            startByte = locationSpan.get(0).asInt(0);
         }
+
+        int line = computeLineFromByteOffset(sourceContent, startByte);
+        int column = computeColumnFromByteOffset(sourceContent, startByte);
 
         return AnalysisIssue.builder()
             .analyzer(getName())
@@ -185,6 +191,45 @@ public class BiomeAnalyzer implements StaticAnalyzer {
             .line(line)
             .column(column)
             .build();
+    }
+
+    /**
+     * Convert a byte offset into a 1-indexed line number by counting newlines.
+     * Returns 1 on empty/invalid input.
+     */
+    private int computeLineFromByteOffset(String content, int byteOffset) {
+        if (content == null || content.isEmpty() || byteOffset <= 0) {
+            return 1;
+        }
+        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+        int clamped = Math.min(byteOffset, bytes.length);
+        int line = 1;
+        for (int i = 0; i < clamped; i++) {
+            if (bytes[i] == (byte) '\n') {
+                line++;
+            }
+        }
+        return line;
+    }
+
+    /**
+     * Convert a byte offset into a 1-indexed column number by counting bytes
+     * since the last newline.
+     */
+    private int computeColumnFromByteOffset(String content, int byteOffset) {
+        if (content == null || content.isEmpty() || byteOffset <= 0) {
+            return 1;
+        }
+        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+        int clamped = Math.min(byteOffset, bytes.length);
+        int lastNewline = -1;
+        for (int i = clamped - 1; i >= 0; i--) {
+            if (bytes[i] == (byte) '\n') {
+                lastNewline = i;
+                break;
+            }
+        }
+        return clamped - lastNewline; // 1-indexed column
     }
 
     private AnalysisIssue.Severity mapSeverity(String severity, String category) {
