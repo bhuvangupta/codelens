@@ -12,6 +12,7 @@ import net.sourceforge.pmd.reporting.Report;
 import net.sourceforge.pmd.reporting.RuleViolation;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -23,6 +24,27 @@ import java.util.Set;
 public class PmdAnalyzer implements StaticAnalyzer {
 
     private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("java");
+
+    private static final List<String> PMD_CONFIG_FILES = List.of(
+        "pmd-ruleset.xml",
+        ".pmd-ruleset.xml",
+        "config/pmd/ruleset.xml"
+    );
+
+    private static final String SECURITY_FLOOR_RULESET = "security-floor/pmd-security-floor.xml";
+    private static final String DEFAULT_RULESET = "pmd/codelens-ruleset.xml";
+
+    /**
+     * Holds PMD configuration fetched from the repository.
+     */
+    public record PmdConfig(String configFilename, String configContent) {}
+
+    /**
+     * Get list of PMD config file names to search for in a repo.
+     */
+    public static List<String> getConfigFileNames() {
+        return PMD_CONFIG_FILES;
+    }
 
     @Override
     public String getName() {
@@ -36,19 +58,36 @@ public class PmdAnalyzer implements StaticAnalyzer {
 
     @Override
     public List<AnalysisIssue> analyze(String filename, String content) {
+        return analyzeWithConfig(filename, content, null);
+    }
+
+    /**
+     * Analyze with optional project ruleset. If config is non-null, loads BOTH
+     * the project's ruleset and the security floor. If null, loads only the
+     * bundled CodeLens default ruleset.
+     */
+    public List<AnalysisIssue> analyzeWithConfig(String filename, String content, PmdConfig config) {
         List<AnalysisIssue> issues = new ArrayList<>();
+        Path tempRulesetFile = null;
 
         try {
-            PMDConfiguration config = new PMDConfiguration();
-            config.setDefaultLanguageVersion(
+            PMDConfiguration pmdConfig = new PMDConfiguration();
+            pmdConfig.setDefaultLanguageVersion(
                 LanguageRegistry.PMD.getLanguageById("java").getDefaultVersion()
             );
 
-            // Use custom ruleset that excludes noisy rules (e.g., GuardLogStatement)
-            config.addRuleSet("pmd/codelens-ruleset.xml");
+            if (config != null && config.configContent() != null && !config.configContent().isBlank()) {
+                tempRulesetFile = Files.createTempFile("pmd-ruleset-", ".xml");
+                Files.writeString(tempRulesetFile, config.configContent());
+                pmdConfig.addRuleSet(tempRulesetFile.toString());
+                pmdConfig.addRuleSet(SECURITY_FLOOR_RULESET);
+                log.info("PMD: Using project ruleset from {} + security floor", config.configFilename());
+            } else {
+                pmdConfig.addRuleSet(DEFAULT_RULESET);
+                log.debug("PMD: Using bundled CodeLens default ruleset");
+            }
 
-            try (PmdAnalysis pmd = PmdAnalysis.create(config)) {
-                // Use TextFile for in-memory content analysis
+            try (PmdAnalysis pmd = PmdAnalysis.create(pmdConfig)) {
                 TextFile textFile = TextFile.forCharSeq(
                     content,
                     FileId.fromPathLikeString(filename),
@@ -75,6 +114,14 @@ public class PmdAnalyzer implements StaticAnalyzer {
             }
         } catch (Exception e) {
             log.warn("PMD analysis failed for {}: {}", filename, e.getMessage());
+        } finally {
+            if (tempRulesetFile != null) {
+                try {
+                    Files.deleteIfExists(tempRulesetFile);
+                } catch (IOException e) {
+                    log.debug("Failed to delete temp PMD ruleset: {}", tempRulesetFile);
+                }
+            }
         }
 
         return issues;
