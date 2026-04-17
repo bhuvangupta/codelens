@@ -357,7 +357,6 @@ public class ReviewService implements ReviewExecutor {
     }
 
     @Override
-    @Transactional
     public void executeReview(UUID reviewId, GitProvider provider, String owner, String repo, int prNumber) {
         log.info("Executing review {} for {}/{} #{}", reviewId, owner, repo, prNumber);
 
@@ -390,27 +389,29 @@ public class ReviewService implements ReviewExecutor {
             return;
         }
 
-        // Save results
-        review.setSummary(result.summary());
-        review.setFilesChanged(result.filesReviewed());
-        review.setLinesAdded(result.linesAdded());
-        review.setLinesDeleted(result.linesRemoved());
-        review.setIssuesFound(result.issues().size());
-        review.setCriticalIssues((int) result.issues().stream()
-            .filter(i -> i.getSeverity() == ReviewIssue.Severity.CRITICAL).count());
-        review.setHighIssues((int) result.issues().stream()
-            .filter(i -> i.getSeverity() == ReviewIssue.Severity.HIGH).count());
-        review.setMediumIssues((int) result.issues().stream()
-            .filter(i -> i.getSeverity() == ReviewIssue.Severity.MEDIUM).count());
-        review.setLowIssues((int) result.issues().stream()
-            .filter(i -> i.getSeverity() == ReviewIssue.Severity.LOW).count());
-        review.setInputTokens(result.totalInputTokens());
-        review.setOutputTokens(result.totalOutputTokens());
-        review.setTicketScopeResult(result.ticketScopeResult());
-        review.setTicketScopeAligned(result.ticketScopeAligned());
-        review.setStatus(Review.ReviewStatus.COMPLETED);
-        review.setCompletedAt(LocalDateTime.now());
-        reviewRepository.save(review);
+        // Save results in a fresh transaction to prevent optimistic locking failures
+        progressService.saveReviewResults(reviewId,
+            result.summary(),
+            result.filesReviewed(),
+            result.linesAdded(),
+            result.linesRemoved(),
+            result.issues().size(),
+            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.CRITICAL).count(),
+            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.HIGH).count(),
+            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.MEDIUM).count(),
+            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.LOW).count(),
+            result.totalInputTokens(),
+            result.totalOutputTokens(),
+            result.ticketScopeResult(),
+            result.ticketScopeAligned(),
+            result.llmProvider(),
+            result.estimatedCost(),
+            result.rawDiff()
+        );
+
+        // Re-fetch the review entity for associating child entities
+        review = reviewRepository.findById(reviewId)
+            .orElseThrow(() -> new IllegalArgumentException("Review not found after save: " + reviewId));
 
         // Save issues
         for (ReviewIssue issue : result.issues()) {
@@ -423,14 +424,6 @@ public class ReviewService implements ReviewExecutor {
             comment.setReview(review);
             commentRepository.save(comment);
         }
-
-        // Set LLM provider used
-        review.setLlmProvider(result.llmProvider());
-        review.setEstimatedCost(result.estimatedCost());
-
-        // Store the diff for later viewing
-        review.setRawDiff(result.rawDiff());
-        reviewRepository.save(review);
 
         // Save parsed file diffs
         if (result.parsedDiffs() != null) {
@@ -1027,7 +1020,6 @@ public class ReviewService implements ReviewExecutor {
     }
 
     @Override
-    @Transactional
     public void executeCommitReview(UUID reviewId, GitProvider provider, String owner, String repo, String commitSha) {
         log.info("Executing commit review {} for {}/{} commit {}", reviewId, owner, repo, commitSha);
 
@@ -1058,27 +1050,29 @@ public class ReviewService implements ReviewExecutor {
             return;
         }
 
-        // Save results
-        review.setSummary(result.summary());
-        review.setFilesChanged(result.filesReviewed());
-        review.setLinesAdded(result.linesAdded());
-        review.setLinesDeleted(result.linesRemoved());
-        review.setIssuesFound(result.issues().size());
-        review.setCriticalIssues((int) result.issues().stream()
-            .filter(i -> i.getSeverity() == ReviewIssue.Severity.CRITICAL).count());
-        review.setHighIssues((int) result.issues().stream()
-            .filter(i -> i.getSeverity() == ReviewIssue.Severity.HIGH).count());
-        review.setMediumIssues((int) result.issues().stream()
-            .filter(i -> i.getSeverity() == ReviewIssue.Severity.MEDIUM).count());
-        review.setLowIssues((int) result.issues().stream()
-            .filter(i -> i.getSeverity() == ReviewIssue.Severity.LOW).count());
-        review.setInputTokens(result.totalInputTokens());
-        review.setOutputTokens(result.totalOutputTokens());
-        review.setTicketScopeResult(result.ticketScopeResult());
-        review.setTicketScopeAligned(result.ticketScopeAligned());
-        review.setStatus(Review.ReviewStatus.COMPLETED);
-        review.setCompletedAt(LocalDateTime.now());
-        reviewRepository.save(review);
+        // Save results in a fresh transaction to prevent optimistic locking failures
+        progressService.saveReviewResults(reviewId,
+            result.summary(),
+            result.filesReviewed(),
+            result.linesAdded(),
+            result.linesRemoved(),
+            result.issues().size(),
+            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.CRITICAL).count(),
+            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.HIGH).count(),
+            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.MEDIUM).count(),
+            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.LOW).count(),
+            result.totalInputTokens(),
+            result.totalOutputTokens(),
+            result.ticketScopeResult(),
+            result.ticketScopeAligned(),
+            result.llmProvider(),
+            result.estimatedCost(),
+            result.rawDiff()
+        );
+
+        // Re-fetch the review entity for associating child entities
+        review = reviewRepository.findById(reviewId)
+            .orElseThrow(() -> new IllegalArgumentException("Review not found after save: " + reviewId));
 
         // Save issues
         for (ReviewIssue issue : result.issues()) {
@@ -1091,14 +1085,6 @@ public class ReviewService implements ReviewExecutor {
             comment.setReview(review);
             commentRepository.save(comment);
         }
-
-        // Set LLM provider used
-        review.setLlmProvider(result.llmProvider());
-        review.setEstimatedCost(result.estimatedCost());
-
-        // Store the diff for later viewing
-        review.setRawDiff(result.rawDiff());
-        reviewRepository.save(review);
 
         // Save parsed file diffs
         if (result.parsedDiffs() != null) {

@@ -247,4 +247,40 @@ public class ReviewProgressService {
         });
     }
 
+    /**
+     * Save review results in a fresh transaction. Does a fresh findById to get the
+     * latest @Version, preventing optimistic locking failures when the caller has
+     * been holding a stale entity across long-running I/O.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void saveReviewResults(UUID reviewId, String summary, int filesChanged,
+            int linesAdded, int linesDeleted, int issuesFound,
+            int criticalIssues, int highIssues, int mediumIssues, int lowIssues,
+            int inputTokens, int outputTokens,
+            String ticketScopeResult, Boolean ticketScopeAligned,
+            String llmProvider, Double estimatedCost, String rawDiff) {
+        Review review = reviewRepository.findById(reviewId)
+            .orElseThrow(() -> new IllegalArgumentException("Review not found: " + reviewId));
+        review.setSummary(summary);
+        review.setFilesChanged(filesChanged);
+        review.setLinesAdded(linesAdded);
+        review.setLinesDeleted(linesDeleted);
+        review.setIssuesFound(issuesFound);
+        review.setCriticalIssues(criticalIssues);
+        review.setHighIssues(highIssues);
+        review.setMediumIssues(mediumIssues);
+        review.setLowIssues(lowIssues);
+        review.setInputTokens(inputTokens);
+        review.setOutputTokens(outputTokens);
+        review.setTicketScopeResult(ticketScopeResult);
+        review.setTicketScopeAligned(ticketScopeAligned);
+        review.setLlmProvider(llmProvider);
+        review.setEstimatedCost(estimatedCost);
+        review.setRawDiff(rawDiff);
+        review.setStatus(Review.ReviewStatus.COMPLETED);
+        review.setCompletedAt(LocalDateTime.now());
+        reviewRepository.save(review);
+        log.info("Review {} results saved (status=COMPLETED)", reviewId);
+    }
+
 }
