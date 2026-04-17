@@ -357,6 +357,7 @@ public class ReviewService implements ReviewExecutor {
     }
 
     @Override
+    @Transactional
     public void executeReview(UUID reviewId, GitProvider provider, String owner, String repo, int prNumber) {
         log.info("Executing review {} for {}/{} #{}", reviewId, owner, repo, prNumber);
 
@@ -1020,6 +1021,7 @@ public class ReviewService implements ReviewExecutor {
     }
 
     @Override
+    @Transactional
     public void executeCommitReview(UUID reviewId, GitProvider provider, String owner, String repo, String commitSha) {
         log.info("Executing commit review {} for {}/{} commit {}", reviewId, owner, repo, commitSha);
 
