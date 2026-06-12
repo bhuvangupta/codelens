@@ -160,6 +160,23 @@ class VerificationServiceTest {
         }
 
         @Test
+        void demotesHighConfidenceRefutedFindings() throws Exception {
+            when(resourceLoader.getResource(anyString())).thenReturn(promptResource);
+            when(promptResource.getContentAsString(StandardCharsets.UTF_8))
+                .thenReturn("{{filename}}|{{patch}}|{{findings}}");
+            when(llmRouter.generate(anyString(), eq("verification")))
+                .thenReturn(new LlmProvider.LlmResponse(
+                    "[{\"index\":0,\"verdict\":\"REFUTED\",\"reason\":\"disputed\"}]", 8, 4));
+
+            var outcome = service.verify("A.java", "+ code",
+                List.of(issue(1, "a", ReviewIssue.Confidence.HIGH)));
+
+            assertTrue(outcome.decisions().dropped().isEmpty());
+            assertEquals(1, outcome.decisions().demoted().size());
+            assertEquals(8, outcome.inputTokens());
+        }
+
+        @Test
         void failsOpenWhenLlmThrows() throws Exception {
             when(resourceLoader.getResource(anyString())).thenReturn(promptResource);
             when(promptResource.getContentAsString(StandardCharsets.UTF_8))
