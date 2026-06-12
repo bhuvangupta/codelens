@@ -310,7 +310,8 @@ Maximum 7 issues, prioritized by severity. Format:
     "rule": "sql-injection|n-plus-one|transactional-private|etc",
     "message": "Brief problem statement and production impact",
     "existing_code": "problematic code snippet",
-    "suggestion": "fixed code snippet"
+    "suggestion": "fixed code snippet",
+    "confidence": "HIGH|MEDIUM|LOW"
   }
 ]
 

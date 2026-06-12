@@ -290,7 +290,8 @@ Maximum 7 issues, prioritized by severity. Format:
     "rule": "xss|sql-injection|hooks-violation|memory-leak|etc",
     "message": "Brief problem statement and production impact",
     "existing_code": "problematic code snippet",
-    "suggestion": "fixed code snippet"
+    "suggestion": "fixed code snippet",
+    "confidence": "HIGH|MEDIUM|LOW"
   }
 ]
 
