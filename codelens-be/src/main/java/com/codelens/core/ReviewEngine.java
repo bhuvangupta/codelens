@@ -54,6 +54,7 @@ public class ReviewEngine {
     private final SecretRedactor secretRedactor;
     private final com.codelens.service.LearningService learningService;
     private final LintConfigService lintConfigService;
+    private final VerificationService verificationService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Custom review rules file path in repo
@@ -96,6 +97,9 @@ public class ReviewEngine {
 
     @Value("${codelens.intelligence.enabled:true}")
     private boolean intelligenceEnabled;
+
+    @Value("${codelens.review.verification.enabled:true}")
+    private boolean verificationEnabled;
 
     @Autowired(required = false)
     private CodeIntelligenceService codeIntelligenceService;
@@ -152,7 +156,8 @@ public class ReviewEngine {
             SmartContextExtractor smartContextExtractor,
             SecretRedactor secretRedactor,
             com.codelens.service.LearningService learningService,
-            LintConfigService lintConfigService) {
+            LintConfigService lintConfigService,
+            VerificationService verificationService) {
         this.gitProviderFactory = gitProviderFactory;
         this.llmRouter = llmRouter;
         this.diffParser = diffParser;
@@ -165,6 +170,7 @@ public class ReviewEngine {
         this.secretRedactor = secretRedactor;
         this.learningService = learningService;
         this.lintConfigService = lintConfigService;
+        this.verificationService = verificationService;
     }
 
     /**
@@ -682,6 +688,35 @@ public class ReviewEngine {
             }
         }
 
+        // Second-pass verification of AI findings (fail-open; linter findings bypass this)
+        if (verificationEnabled && !issues.isEmpty()) {
+            String redactedPatch = secretRedactor.redactSecrets(file.patch());
+            VerificationService.VerificationOutcome outcome =
+                verificationService.verify(file.filename(), redactedPatch, issues);
+            for (VerificationService.Decision d : outcome.decisions().dropped()) {
+                issues.remove(d.issue());
+                ReviewComment match = findMatchingComment(comments, d.issue());
+                if (match != null) {
+                    comments.remove(match);
+                }
+            }
+            for (VerificationService.Decision d : outcome.decisions().demoted()) {
+                d.issue().setConfidence(ReviewIssue.Confidence.LOW);
+                ReviewComment match = findMatchingComment(comments, d.issue());
+                if (match != null) {
+                    match.setConfidence(ReviewComment.Confidence.LOW);
+                }
+            }
+            if (!outcome.decisions().dropped().isEmpty() || !outcome.decisions().demoted().isEmpty()) {
+                log.info("Verification dropped {} and demoted {} AI findings in {}",
+                    outcome.decisions().dropped().size(),
+                    outcome.decisions().demoted().size(),
+                    file.filename());
+            }
+            inputTokens += outcome.inputTokens();
+            outputTokens += outcome.outputTokens();
+        }
+
         // Wait for static analysis and merge results
         try {
             List<ReviewIssue> staticIssues = staticFuture.join();
@@ -746,6 +781,21 @@ public class ReviewEngine {
         issue.setCveId(staticIssue.cveId());
         issue.setCvssScore(staticIssue.cvssScore());
         return issue;
+    }
+
+    /**
+     * Comments are created 1:1 with AI issues at parse time but carry no link
+     * back to the issue; match on (filePath, line, body == issue message).
+     */
+    private ReviewComment findMatchingComment(List<ReviewComment> comments, ReviewIssue issue) {
+        for (ReviewComment c : comments) {
+            if (java.util.Objects.equals(c.getFilePath(), issue.getFilePath())
+                    && java.util.Objects.equals(c.getLineNumber(), issue.getLineNumber())
+                    && java.util.Objects.equals(c.getBody(), issue.getDescription())) {
+                return c;
+            }
+        }
+        return null;
     }
 
     /**
