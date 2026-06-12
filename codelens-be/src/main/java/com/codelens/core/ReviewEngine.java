@@ -688,6 +688,9 @@ public class ReviewEngine {
             }
         }
 
+        int verificationInputTokens = 0;
+        int verificationOutputTokens = 0;
+
         // Second-pass verification of AI findings (fail-open; linter findings bypass this)
         if (verificationEnabled && !issues.isEmpty()) {
             String redactedPatch = secretRedactor.redactSecrets(file.patch());
@@ -713,8 +716,8 @@ public class ReviewEngine {
                     outcome.decisions().demoted().size(),
                     file.filename());
             }
-            inputTokens += outcome.inputTokens();
-            outputTokens += outcome.outputTokens();
+            verificationInputTokens = outcome.inputTokens();
+            verificationOutputTokens = outcome.outputTokens();
         }
 
         // Wait for static analysis and merge results
@@ -750,16 +753,23 @@ public class ReviewEngine {
 
         // Calculate cost using the actual provider for this file's task type
         double fileCost = 0.0;
-        if (inputTokens > 0 || outputTokens > 0) {
-            try {
+        try {
+            if (inputTokens > 0 || outputTokens > 0) {
                 LlmProvider provider = llmRouter.routeRequest(llmTaskType);
                 fileCost = provider.estimateCost(inputTokens, outputTokens);
-            } catch (Exception e) {
-                log.debug("Could not estimate cost for {}", file.filename());
             }
+            if (verificationInputTokens > 0 || verificationOutputTokens > 0) {
+                LlmProvider verifyProvider = llmRouter.routeRequest("verification");
+                fileCost += verifyProvider.estimateCost(verificationInputTokens, verificationOutputTokens);
+            }
+        } catch (Exception e) {
+            log.debug("Could not estimate cost for {}", file.filename());
         }
 
-        return new FileReviewResult(issues, comments, inputTokens, outputTokens, fileCost);
+        return new FileReviewResult(issues, comments,
+            inputTokens + verificationInputTokens,
+            outputTokens + verificationOutputTokens,
+            fileCost);
     }
 
     /**
