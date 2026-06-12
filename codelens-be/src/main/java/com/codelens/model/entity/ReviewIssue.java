@@ -50,6 +50,10 @@ public class ReviewIssue {
     @Enumerated(EnumType.STRING)
     private Source source; // AI, STATIC, or CVE
 
+    // Self-reported LLM confidence; STATIC issues are always HIGH
+    @Enumerated(EnumType.STRING)
+    private Confidence confidence;
+
     // For CVE findings
     private String cveId;
     private Double cvssScore;
@@ -102,6 +106,12 @@ public class ReviewIssue {
         AI,
         STATIC,
         CVE
+    }
+
+    public enum Confidence {
+        HIGH,
+        MEDIUM,
+        LOW
     }
 
     // Convenience methods for compatibility

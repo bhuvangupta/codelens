@@ -742,6 +742,7 @@ public class ReviewEngine {
         issue.setSuggestedFix(staticIssue.suggestion());
         issue.setSource(ReviewIssue.Source.STATIC);
         issue.setAnalyzer(staticIssue.analyzer());
+        issue.setConfidence(ReviewIssue.Confidence.HIGH);
         issue.setCveId(staticIssue.cveId());
         issue.setCvssScore(staticIssue.cvssScore());
         return issue;
@@ -1100,6 +1101,7 @@ public class ReviewEngine {
                     issue.setSuggestedFix(suggestion);
                     issue.setSource(ReviewIssue.Source.AI);
                     issue.setAnalyzer("ai");
+                    issue.setConfidence(parseEnumSafe(confidence, ReviewIssue.Confidence.class, ReviewIssue.Confidence.MEDIUM));
                     // Build AI explanation with existing code and confidence
                     if (existingCode != null || confidence != null) {
                         StringBuilder explanation = new StringBuilder();
@@ -1121,6 +1123,7 @@ public class ReviewEngine {
                     comment.setSuggestion(suggestion);
                     comment.setCategory(categoryStr);
                     comment.setSeverity(mapSeverity(severity));
+                    comment.setConfidence(parseEnumSafe(confidence, ReviewComment.Confidence.class, ReviewComment.Confidence.MEDIUM));
                     comment.setCommitSha(commitSha);
                     comments.add(comment);
 
@@ -1155,6 +1158,7 @@ public class ReviewEngine {
                             String rule = (String) issueData.getOrDefault("rule", "ai-review");
                             String message = (String) issueData.get("message");
                             String suggestion = (String) issueData.get("suggestion");
+                            String confidence = (String) issueData.getOrDefault("confidence", "MEDIUM");
 
                             ReviewIssue.Severity severity = parseEnumSafe(severityStr, ReviewIssue.Severity.class, ReviewIssue.Severity.LOW);
                             ReviewIssue.Category category = parseEnumSafe(categoryStr, ReviewIssue.Category.class, ReviewIssue.Category.SMELL);
@@ -1169,6 +1173,7 @@ public class ReviewEngine {
                             issue.setSuggestedFix(suggestion);
                             issue.setSource(ReviewIssue.Source.AI);
                             issue.setAnalyzer("ai");
+                            issue.setConfidence(parseEnumSafe(confidence, ReviewIssue.Confidence.class, ReviewIssue.Confidence.MEDIUM));
                             issues.add(issue);
 
                             ReviewComment comment = new ReviewComment();
@@ -1178,6 +1183,7 @@ public class ReviewEngine {
                             comment.setSuggestion(suggestion);
                             comment.setCategory(categoryStr);
                             comment.setSeverity(mapSeverity(severity));
+                            comment.setConfidence(parseEnumSafe(confidence, ReviewComment.Confidence.class, ReviewComment.Confidence.MEDIUM));
                             comment.setCommitSha(commitSha);
                             comments.add(comment);
                         } catch (Exception ex) {

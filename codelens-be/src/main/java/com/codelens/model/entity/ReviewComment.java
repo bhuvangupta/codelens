@@ -49,6 +49,9 @@ public class ReviewComment {
     @Enumerated(EnumType.STRING)
     private Severity severity;
 
+    @Enumerated(EnumType.STRING)
+    private Confidence confidence;
+
     // For tracking if comment was posted to PR
     private Boolean postedToPr;
     private String externalCommentId;
@@ -75,6 +78,12 @@ public class ReviewComment {
         MEDIUM,
         LOW,
         INFO
+    }
+
+    public enum Confidence {
+        HIGH,
+        MEDIUM,
+        LOW
     }
 
     // Convenience methods for compatibility
