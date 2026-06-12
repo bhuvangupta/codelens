@@ -288,6 +288,7 @@ public class OptimizationService {
                     issue.setSuggestedFix(suggestion);
                     issue.setSource(ReviewIssue.Source.AI);
                     issue.setAnalyzer("optimization");
+                    issue.setConfidence(parseEnumSafe(confidence, ReviewIssue.Confidence.class, ReviewIssue.Confidence.MEDIUM));
 
                     // Build explanation with impact and confidence
                     StringBuilder explanation = new StringBuilder();
