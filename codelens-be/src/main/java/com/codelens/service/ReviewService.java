@@ -547,6 +547,18 @@ public class ReviewService implements ReviewExecutor {
         }
     }
 
+    /**
+     * Inline PR comments require HIGH/CRITICAL severity AND confidence above LOW.
+     * Null confidence (legacy rows, text-parsed responses) posts — fail-open.
+     * LOW-confidence findings remain visible in the CodeLens dashboard.
+     */
+    static boolean shouldPostInline(ReviewComment comment) {
+        boolean actionable = comment.getSeverity() == ReviewComment.Severity.CRITICAL ||
+            comment.getSeverity() == ReviewComment.Severity.HIGH;
+        boolean lowConfidence = comment.getConfidence() == ReviewComment.Confidence.LOW;
+        return actionable && !lowConfidence;
+    }
+
     private void postReviewToPr(GitProvider provider, String owner, String repo, int prNumber,
                                  Review review, ReviewEngine.ReviewResult result) {
         // Check if posting comments to PR is enabled for this organization
@@ -583,8 +595,7 @@ public class ReviewService implements ReviewExecutor {
             // Post inline comments for high/critical issues (only if enabled)
             if (postInlineCommentsEnabled) {
                 for (ReviewComment comment : result.comments()) {
-                    if (comment.getSeverity() == ReviewComment.Severity.CRITICAL ||
-                        comment.getSeverity() == ReviewComment.Severity.HIGH) {
+                    if (shouldPostInline(comment)) {
                         try {
                             gitProvider.postInlineComment(owner, repo, prNumber,
                                 new InlineComment(
