@@ -32,6 +32,9 @@ public class LlmRouter {
     @Value("${codelens.llm.routing.security:claude}")
     private String securityProvider;
 
+    @Value("${codelens.llm.routing.verification:}")
+    private String verificationProvider;
+
     @Value("${codelens.llm.routing.fallback:ollama}")
     private String fallbackProvider;
 
@@ -122,6 +125,12 @@ public class LlmRouter {
                 attempt, failedProviders));
     }
 
+    /** Verification defaults to the review provider unless explicitly routed. */
+    private String verificationProviderOrDefault() {
+        return (verificationProvider == null || verificationProvider.isBlank())
+            ? reviewProvider : verificationProvider;
+    }
+
     /**
      * Build the fallback chain for a given task type.
      * Returns providers in order: preferred → default → fallback
@@ -130,6 +139,7 @@ public class LlmRouter {
         String preferred = switch (taskType) {
             case SUMMARY, DESCRIBE -> summaryProvider;
             case REVIEW, QUICK_SCAN -> reviewProvider;
+            case VERIFICATION -> verificationProviderOrDefault();
             case SECURITY_SCAN, DEEP_REVIEW -> securityProvider;
         };
 
@@ -160,6 +170,7 @@ public class LlmRouter {
             case "security" -> TaskType.SECURITY_SCAN;
             case "deep_review" -> TaskType.DEEP_REVIEW;
             case "optimization" -> TaskType.REVIEW; // Use review routing for optimization
+            case "verification" -> TaskType.VERIFICATION;
             default -> TaskType.REVIEW;
         };
         return generateWithFallback(prompt, taskType).response();
@@ -175,6 +186,7 @@ public class LlmRouter {
             case "review" -> TaskType.REVIEW;
             case "security" -> TaskType.SECURITY_SCAN;
             case "deep_review" -> TaskType.DEEP_REVIEW;
+            case "verification" -> TaskType.VERIFICATION;
             default -> TaskType.REVIEW;
         };
         return getProviderForTask(taskType);
@@ -187,6 +199,7 @@ public class LlmRouter {
         String preferredProvider = switch (taskType) {
             case SUMMARY, DESCRIBE -> summaryProvider;
             case REVIEW, QUICK_SCAN -> reviewProvider;
+            case VERIFICATION -> verificationProviderOrDefault();
             case SECURITY_SCAN -> securityProvider;
             case DEEP_REVIEW -> securityProvider; // Use expensive model
         };
@@ -227,6 +240,7 @@ public class LlmRouter {
         DESCRIBE,       // Generate PR description (cheap)
         QUICK_SCAN,     // Quick code scan (cheap)
         REVIEW,         // Standard code review (medium)
+        VERIFICATION,   // Verify AI review findings (defaults to review model)
         DEEP_REVIEW,    // Deep analysis (expensive)
         SECURITY_SCAN   // Security-focused review (expensive)
     }

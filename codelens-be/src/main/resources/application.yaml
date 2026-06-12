@@ -143,6 +143,7 @@ codelens:
       summary: ${LLM_DEFAULT_PROVIDER:ollama}   # Fast model for PR summaries
       review: ${LLM_DEFAULT_PROVIDER:ollama}    # Default model for code review
       security: ${LLM_SECURITY_PROVIDER:claude-opus}  # Security analysis (Opus 4.6)
+      verification: ${LLM_VERIFICATION_PROVIDER:${LLM_DEFAULT_PROVIDER:ollama}}  # Verify AI findings (defaults to review model)
       fallback: ollama                          # Offline fallback
 
     # Automatic fallback on provider failure
@@ -174,6 +175,9 @@ codelens:
     max-diff-lines: 5000
     enable-security-scan: true
     enable-auto-summary: true
+
+    verification:
+      enabled: true            # Second-pass LLM verification of AI findings (fail-open)
 
     # Performance optimization
     parallel-threads: 5        # Number of files to review concurrently
