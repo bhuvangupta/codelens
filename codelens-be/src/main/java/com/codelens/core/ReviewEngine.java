@@ -229,6 +229,11 @@ public class ReviewEngine {
         List<ChangedFile> changedFiles = gitProvider.getChangedFiles(request.owner(), request.repo(), request.prNumber());
         log.info("Found {} changed files", changedFiles.size());
 
+        // Build PR-wide change manifest once (cross-file context for every per-file prompt)
+        final List<ChangeManifestBuilder.Entry> manifestEntries = changedFiles.stream()
+            .map(f -> ChangeManifestBuilder.buildEntry(f.filename(), f.additions(), f.deletions(), f.patch()))
+            .toList();
+
         // Update code intelligence graph with changed files
         if (intelligenceEnabled && codeIntelligenceService != null && request.repositoryId() != null) {
             try {
@@ -317,7 +322,7 @@ public class ReviewEngine {
                         FileReviewResult fileResult = reviewFile(
                             request, gitProvider, prInfo, file, parsedDiffs,
                             request.organizationId(), lintConfigBundle, repoRules,
-                            learningContext
+                            learningContext, manifestEntries
                         );
                         allIssues.addAll(fileResult.issues());
                         allComments.addAll(fileResult.comments());
@@ -527,7 +532,8 @@ public class ReviewEngine {
             java.util.UUID organizationId,
             LintConfigBundle lintConfigBundle,
             String customRepoRules,
-            com.codelens.service.LearningService.RepoLearningContext learningContext) {
+            com.codelens.service.LearningService.RepoLearningContext learningContext,
+            List<ChangeManifestBuilder.Entry> manifestEntries) {
 
         log.debug("Reviewing file: {}", file.filename());
 
@@ -652,8 +658,9 @@ public class ReviewEngine {
             }
 
             // Run full AI review with automatic fallback
+            String manifestBlock = ChangeManifestBuilder.format(manifestEntries, file.filename());
             String prompt = buildReviewPrompt(file.filename(), file.patch(), fileContent,
-                customRepoRules, learningContext.activeHints(), graphContextBlock);
+                customRepoRules, learningContext.activeHints(), graphContextBlock, manifestBlock);
             try {
                 // Use fallback-enabled generation for reliability
                 LlmProvider.LlmResponse response = llmRouter.generate(prompt, "review");
@@ -817,7 +824,8 @@ public class ReviewEngine {
     }
 
     private String buildReviewPrompt(String filename, String patch, String fileContent,
-            String customRepoRules, List<String> learnedHints, String graphContextBlock) {
+            String customRepoRules, List<String> learnedHints, String graphContextBlock,
+            String manifestBlock) {
         // Use smart context extraction to reduce token usage
         SmartContextExtractor.ExtractionResult extraction =
             smartContextExtractor.extract(filename, fileContent, patch);
@@ -875,6 +883,11 @@ public class ReviewEngine {
         // Append code intelligence graph context (callers, tests, endpoints, DI)
         if (graphContextBlock != null && !graphContextBlock.isBlank()) {
             prompt = prompt + "\n\n---\n" + graphContextBlock;
+        }
+
+        // Append PR-wide change manifest (cross-file context)
+        if (manifestBlock != null && !manifestBlock.isBlank()) {
+            prompt = prompt + "\n\n---\n\n" + manifestBlock;
         }
 
         return prompt;
@@ -1996,7 +2009,7 @@ public class ReviewEngine {
         } else {
             // Full AI review (no graph context for commit reviews)
             String prompt = buildReviewPrompt(file.filename(), file.patch(), fileContent,
-                customRepoRules, learningContext.activeHints(), null);
+                customRepoRules, learningContext.activeHints(), null, "");
             try {
                 LlmProvider.LlmResponse response = llmRouter.generate(prompt, "review");
                 inputTokens = response.inputTokens();
