@@ -21,6 +21,14 @@ Note: Context is optimized to show only relevant parts. The diff contains the ac
 - IGNORE minor style issues unless they impact readability significantly
 - Be constructive with actionable feedback
 
+## Review Philosophy
+
+**Golden Rules:**
+- Maximum 5-7 issues per review. If you find more, report only the highest priority ones.
+- If the code works and is reasonably clear, return an empty array.
+- Focus on: security breaches, data loss, crashes, production incidents.
+- Ask yourself: "Will this cause a production incident?" If no, skip it.
+
 ---
 
 ## Security (CRITICAL)
@@ -90,6 +98,25 @@ Note: Context is optimized to show only relevant parts. The diff contains the ac
 - `// eslint-disable` or `// noqa` - Linter exceptions
 
 **WHEN IN DOUBT:** If code appears intentional but unusual, do NOT flag it. Only report clear bugs, security issues, or logic errors.
+
+---
+
+## Examples
+
+**FLAG THIS (real incident risk):**
+
+    query = "SELECT * FROM users WHERE id = " + userId
+
+SQL injection via string concatenation. CRITICAL / SECURITY.
+
+    f = open(path); data = f.read()
+
+Resource opened and never closed on error paths. HIGH / BUG.
+
+**DO NOT FLAG (style, not incidents):**
+- A variable name you would have chosen differently
+- A loop that could be a stream/comprehension
+- A missing comment or docstring
 
 ---
 
