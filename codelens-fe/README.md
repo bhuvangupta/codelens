@@ -23,7 +23,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5174
+Open http://localhost:5175
 
 ### Build for Production
 
