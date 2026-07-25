@@ -323,6 +323,33 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
         """)
     Optional<ReviewProgressDto> getProgress(@Param("reviewId") UUID reviewId);
 
+    /**
+     * Org-scoped variant of {@link #getProgress}. Keeps the lightweight
+     * projection (no raw_diff) while enforcing tenant isolation in SQL, so the
+     * 2-second poll does not need to load the Review entity.
+     *
+     * @return empty when the review does not exist OR belongs to another org
+     */
+    @Query("""
+        SELECT new com.codelens.api.dto.ReviewProgressDto(
+            r.id,
+            CAST(r.status AS string),
+            r.filesReviewedCount,
+            r.totalFilesToReview,
+            r.currentFile,
+            r.startedAt,
+            r.optimizationInProgress,
+            r.optimizationFilesAnalyzed,
+            r.optimizationTotalFiles,
+            r.optimizationCurrentFile
+        )
+        FROM Review r
+        WHERE r.id = :reviewId
+          AND r.repository.organization.id = :orgId
+        """)
+    Optional<ReviewProgressDto> getProgressForOrg(@Param("reviewId") UUID reviewId,
+                                                  @Param("orgId") UUID orgId);
+
     // ============ Trend Analytics ============
 
     /**

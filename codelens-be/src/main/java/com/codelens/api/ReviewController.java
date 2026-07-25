@@ -142,8 +142,18 @@ public class ReviewController {
      * This endpoint is polled every 2 seconds during active reviews.
      */
     @GetMapping("/{id}/status")
-    public ResponseEntity<Map<String, Object>> getReviewStatus(@PathVariable UUID id) {
-        return reviewRepository.getProgress(id)
+    public ResponseEntity<Map<String, Object>> getReviewStatus(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedUser auth) {
+        if (auth == null) {
+            return ResponseEntity.notFound().build();
+        }
+        User user = userRepository.findByEmail(auth.email()).orElse(null);
+        UUID userOrgId = ReviewAccessPolicy.organizationIdOf(user);
+        if (userOrgId == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return reviewRepository.getProgressForOrg(id, userOrgId)
             .map(progress -> {
                 Map<String, Object> response = new java.util.HashMap<>();
                 response.put("id", progress.id());
