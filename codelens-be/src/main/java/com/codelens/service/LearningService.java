@@ -32,11 +32,21 @@ public class LearningService {
 
     /**
      * Submit feedback for a review issue.
+     *
+     * @param reviewId the review the caller claims the issue belongs to; verified
+     *                 here so direct service callers cannot write feedback into a
+     *                 review they did not name
+     * @throws IllegalArgumentException if the issue is unknown or belongs elsewhere
      */
     @Transactional
-    public void submitFeedback(UUID issueId, FeedbackRequest request, User user) {
+    public void submitFeedback(UUID reviewId, UUID issueId, FeedbackRequest request, User user) {
         ReviewIssue issue = issueRepository.findById(issueId)
                 .orElseThrow(() -> new IllegalArgumentException("Issue not found: " + issueId));
+
+        if (issue.getReview() == null || !issue.getReview().getId().equals(reviewId)) {
+            throw new IllegalArgumentException(
+                    "Issue " + issueId + " does not belong to review " + reviewId);
+        }
 
         // Update issue feedback fields
         issue.setIsHelpful(request.isHelpful());

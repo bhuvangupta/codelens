@@ -229,14 +229,14 @@ public class ReviewController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        // Verify the issue belongs to the specified review
-        Optional<Review> review = reviewService.getReview(reviewId);
-        if (review.isEmpty()) {
+        // Caller must own the review; 404 rather than 403 so foreign ids stay opaque
+        if (findAccessibleReview(reviewId, auth).isEmpty()) {
             return ResponseEntity.notFound().build();
         }
 
         try {
             learningService.submitFeedback(
+                    reviewId,
                     issueId,
                     new LearningService.FeedbackRequest(
                             request.isHelpful(),
