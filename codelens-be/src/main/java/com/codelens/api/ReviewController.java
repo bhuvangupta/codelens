@@ -14,6 +14,7 @@ import com.codelens.repository.ReviewFileDiffRepository;
 import com.codelens.repository.ReviewRepository;
 import com.codelens.repository.UserRepository;
 import com.codelens.security.AuthenticatedUser;
+import com.codelens.security.ReviewAccessPolicy;
 import com.codelens.service.LearningService;
 import com.codelens.service.OptimizationService;
 import com.codelens.service.ReviewCancellationService;
@@ -123,8 +124,10 @@ public class ReviewController {
      * Get a specific review by ID
      */
     @GetMapping("/{id}")
-    public ResponseEntity<ReviewResponse> getReview(@PathVariable UUID id) {
-        return reviewService.getReview(id)
+    public ResponseEntity<ReviewResponse> getReview(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedUser auth) {
+        return findAccessibleReview(id, auth)
             .map(review -> {
                 List<ReviewIssue> issues = reviewService.getIssuesForReview(id);
                 List<ReviewComment> comments = reviewService.getCommentsForReview(id);
@@ -187,7 +190,12 @@ public class ReviewController {
      * Get issues for a review
      */
     @GetMapping("/{id}/issues")
-    public ResponseEntity<List<ReviewResponse.IssueDto>> getReviewIssues(@PathVariable UUID id) {
+    public ResponseEntity<List<ReviewResponse.IssueDto>> getReviewIssues(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedUser auth) {
+        if (findAccessibleReview(id, auth).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
         List<ReviewIssue> issues = reviewService.getIssuesForReview(id);
         return ResponseEntity.ok(issues.stream().map(ReviewResponse.IssueDto::from).toList());
     }
@@ -243,7 +251,12 @@ public class ReviewController {
      * Get comments for a review
      */
     @GetMapping("/{id}/comments")
-    public ResponseEntity<List<ReviewResponse.CommentDto>> getReviewComments(@PathVariable UUID id) {
+    public ResponseEntity<List<ReviewResponse.CommentDto>> getReviewComments(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedUser auth) {
+        if (findAccessibleReview(id, auth).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
         List<ReviewComment> comments = reviewService.getCommentsForReview(id);
         return ResponseEntity.ok(comments.stream().map(ReviewResponse.CommentDto::from).toList());
     }
@@ -252,8 +265,10 @@ public class ReviewController {
      * Run optimization analysis on a completed review
      */
     @PostMapping("/{id}/optimize")
-    public ResponseEntity<Map<String, Object>> runOptimization(@PathVariable UUID id) {
-        return reviewService.getReview(id)
+    public ResponseEntity<Map<String, Object>> runOptimization(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedUser auth) {
+        return findAccessibleReview(id, auth)
             .map(review -> {
                 if (review.getStatus() != Review.ReviewStatus.COMPLETED) {
                     return ResponseEntity.badRequest().<Map<String, Object>>body(
@@ -287,8 +302,10 @@ public class ReviewController {
      * Get optimization results for a review (includes progress info)
      */
     @GetMapping("/{id}/optimizations")
-    public ResponseEntity<Map<String, Object>> getOptimizations(@PathVariable UUID id) {
-        return reviewService.getReview(id)
+    public ResponseEntity<Map<String, Object>> getOptimizations(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedUser auth) {
+        return findAccessibleReview(id, auth)
             .map(review -> {
                 List<ReviewIssue> optimizations = reviewService.getOptimizationsForReview(id);
 
@@ -489,8 +506,10 @@ public class ReviewController {
      * Get diff for a review
      */
     @GetMapping("/{id}/diff")
-    public ResponseEntity<DiffResponse> getReviewDiff(@PathVariable UUID id) {
-        return reviewService.getReview(id)
+    public ResponseEntity<DiffResponse> getReviewDiff(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedUser auth) {
+        return findAccessibleReview(id, auth)
             .map(review -> {
                 List<ReviewFileDiff> fileDiffs = fileDiffRepository.findByReviewIdOrderByFilePathAsc(id);
                 return ResponseEntity.ok(new DiffResponse(
@@ -526,6 +545,27 @@ public class ReviewController {
                 diff.getPatch()
             );
         }
+    }
+
+    /**
+     * Load a review only if the caller's organization owns it.
+     *
+     * <p>Returns empty for every failure mode — missing auth, unknown user,
+     * missing review, foreign organization — so callers map empty to 404 and
+     * never reveal whether a given review id exists in another org.
+     */
+    private Optional<Review> findAccessibleReview(UUID reviewId, AuthenticatedUser auth) {
+        if (auth == null) {
+            return Optional.empty();
+        }
+        User user = userRepository.findByEmail(auth.email()).orElse(null);
+        if (user == null) {
+            return Optional.empty();
+        }
+        UUID userOrgId = ReviewAccessPolicy.organizationIdOf(user);
+        return reviewService.getReview(reviewId)
+            .filter(review -> ReviewAccessPolicy.canAccess(
+                userOrgId, ReviewAccessPolicy.organizationIdOf(review)));
     }
 
     private int calculateProgress(Review review) {
