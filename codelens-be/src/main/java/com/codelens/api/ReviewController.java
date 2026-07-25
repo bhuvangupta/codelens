@@ -476,19 +476,9 @@ public class ReviewController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        // Verify review belongs to user's organization
-        Review existingReview = reviewService.getReview(id).orElse(null);
-        if (existingReview == null) {
+        // Same fail-closed org rule as every other review endpoint
+        if (findAccessibleReview(id, auth).isEmpty()) {
             return ResponseEntity.notFound().build();
-        }
-
-        UUID userOrgId = cancelledBy.getOrganization() != null ? cancelledBy.getOrganization().getId() : null;
-        UUID reviewOrgId = (existingReview.getRepository() != null && existingReview.getRepository().getOrganization() != null)
-                ? existingReview.getRepository().getOrganization().getId() : null;
-
-        if (reviewOrgId != null && !reviewOrgId.equals(userOrgId)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", "You can only cancel reviews in your organization"));
         }
 
         String reason = request != null ? request.reason() : null;
