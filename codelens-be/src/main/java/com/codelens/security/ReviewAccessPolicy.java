@@ -39,9 +39,32 @@ public final class ReviewAccessPolicy {
     }
 
     /**
-     * Access requires both organizations to be known and identical.
+     * @return the organization of the user who submitted the review, or null.
+     *         Webhook-created reviews have no user, so this is frequently null.
      */
-    public static boolean canAccess(UUID userOrgId, UUID reviewOrgId) {
-        return userOrgId != null && userOrgId.equals(reviewOrgId);
+    public static UUID submitterOrganizationIdOf(Review review) {
+        if (review == null || review.getUser() == null
+                || review.getUser().getOrganization() == null) {
+            return null;
+        }
+        return review.getUser().getOrganization().getId();
+    }
+
+    /**
+     * Access requires the caller's organization to be known, and to match
+     * either the review's repository organization or the organization of the
+     * user who submitted it.
+     *
+     * <p>Both are accepted because the two can legitimately differ: repositories
+     * created by webhook derive their organization from the Git namespace, while
+     * users derive theirs from email-domain mapping. Requiring only the
+     * repository org would 404 reviews that the caller's own organization
+     * submitted and can see in its own listings.
+     */
+    public static boolean canAccess(UUID userOrgId, UUID repoOrgId, UUID submitterOrgId) {
+        if (userOrgId == null) {
+            return false;
+        }
+        return userOrgId.equals(repoOrgId) || userOrgId.equals(submitterOrgId);
     }
 }

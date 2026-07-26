@@ -85,6 +85,13 @@ public class ReviewController {
                 auth.providerId(), auth.email(), auth.name(), auth.picture());
         }
 
+        // An org-less caller could spend LLM budget on a review it can never read
+        // back (every read endpoint is org-gated). Refuse at the source.
+        User submitter = auth != null ? userRepository.findByEmail(auth.email()).orElse(null) : null;
+        if (ReviewAccessPolicy.organizationIdOf(submitter) == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
         boolean includeOptimization = Boolean.TRUE.equals(request.includeOptimization());
         Review review = reviewService.submitReview(
             request.prUrl(), sessionUser, includeOptimization,
@@ -110,6 +117,12 @@ public class ReviewController {
         if (auth != null) {
             sessionUser = new ReviewService.SessionUserInfo(
                 auth.providerId(), auth.email(), auth.name(), auth.picture());
+        }
+
+        // Same guard as submitReview: no organization, no spend.
+        User submitter = auth != null ? userRepository.findByEmail(auth.email()).orElse(null) : null;
+        if (ReviewAccessPolicy.organizationIdOf(submitter) == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
         boolean includeOptimization = Boolean.TRUE.equals(request.includeOptimization());
@@ -548,7 +561,9 @@ public class ReviewController {
     }
 
     /**
-     * Load a review only if the caller's organization owns it.
+     * Load a review only if the caller's organization owns it — either as the
+     * organization of the review's repository or as that of the user who
+     * submitted it. See {@link ReviewAccessPolicy#canAccess} for why both count.
      *
      * <p>Returns empty for every failure mode — missing auth, unknown user,
      * missing review, foreign organization — so callers map empty to 404 and
@@ -565,7 +580,9 @@ public class ReviewController {
         UUID userOrgId = ReviewAccessPolicy.organizationIdOf(user);
         return reviewService.getReview(reviewId)
             .filter(review -> ReviewAccessPolicy.canAccess(
-                userOrgId, ReviewAccessPolicy.organizationIdOf(review)));
+                userOrgId,
+                ReviewAccessPolicy.organizationIdOf(review),
+                ReviewAccessPolicy.submitterOrganizationIdOf(review)));
     }
 
     private int calculateProgress(Review review) {

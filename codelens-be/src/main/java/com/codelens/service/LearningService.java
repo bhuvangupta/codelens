@@ -43,7 +43,8 @@ public class LearningService {
         ReviewIssue issue = issueRepository.findById(issueId)
                 .orElseThrow(() -> new IllegalArgumentException("Issue not found: " + issueId));
 
-        if (issue.getReview() == null || !issue.getReview().getId().equals(reviewId)) {
+        UUID owningReviewId = issue.getReview() == null ? null : issue.getReview().getId();
+        if (reviewId == null || !reviewId.equals(owningReviewId)) {
             throw new IllegalArgumentException(
                     "Issue " + issueId + " does not belong to review " + reviewId);
         }

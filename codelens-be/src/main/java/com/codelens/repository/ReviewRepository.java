@@ -298,35 +298,16 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
     // ============ Lightweight Progress Query ============
 
     /**
-     * Get lightweight review progress for polling.
-     * Only fetches fields needed for progress display, avoiding large fields like raw_diff.
-     * Used by GET /api/reviews/{id}/status endpoint which is polled every 2 seconds.
+     * Get lightweight review progress for polling, scoped to one organization.
+     * Only fetches fields needed for progress display, avoiding large fields like
+     * raw_diff. Used by GET /api/reviews/{id}/status which is polled every 2 seconds,
+     * so tenant isolation is enforced in SQL rather than by loading the Review entity.
      *
-     * @param reviewId The review ID
-     * @return ReviewProgressDto with only progress fields, or empty if not found
-     */
-    @Query("""
-        SELECT new com.codelens.api.dto.ReviewProgressDto(
-            r.id,
-            CAST(r.status AS string),
-            r.filesReviewedCount,
-            r.totalFilesToReview,
-            r.currentFile,
-            r.startedAt,
-            r.optimizationInProgress,
-            r.optimizationFilesAnalyzed,
-            r.optimizationTotalFiles,
-            r.optimizationCurrentFile
-        )
-        FROM Review r
-        WHERE r.id = :reviewId
-        """)
-    Optional<ReviewProgressDto> getProgress(@Param("reviewId") UUID reviewId);
-
-    /**
-     * Org-scoped variant of {@link #getProgress}. Keeps the lightweight
-     * projection (no raw_diff) while enforcing tenant isolation in SQL, so the
-     * 2-second poll does not need to load the Review entity.
+     * <p>A review is visible to an org if EITHER its repository org OR the org of
+     * the user who submitted it matches — the same rule as
+     * {@link com.codelens.security.ReviewAccessPolicy#canAccess}. The joins must be
+     * LEFT joins: webhook reviews have no user, and an implicit path join would
+     * silently drop them even when their repository org matches.
      *
      * @return empty when the review does not exist OR belongs to another org
      */
@@ -344,8 +325,12 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
             r.optimizationCurrentFile
         )
         FROM Review r
+        LEFT JOIN r.repository rp
+        LEFT JOIN rp.organization rpo
+        LEFT JOIN r.user u
+        LEFT JOIN u.organization uo
         WHERE r.id = :reviewId
-          AND r.repository.organization.id = :orgId
+          AND (rpo.id = :orgId OR uo.id = :orgId)
         """)
     Optional<ReviewProgressDto> getProgressForOrg(@Param("reviewId") UUID reviewId,
                                                   @Param("orgId") UUID orgId);

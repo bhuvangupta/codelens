@@ -72,6 +72,46 @@ class LearningServiceFeedbackScopeTest {
     }
 
     @Test
+    void rejectsIssueWhoseReviewHasNoId() {
+        // Both ids null must NOT be treated as a match — the check is fail-closed,
+        // not Objects.equals(null, null).
+        when(issueRepository.findById(ISSUE_ID))
+            .thenReturn(Optional.of(issueBelongingTo(null)));
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () ->
+            service.submitFeedback(null, ISSUE_ID,
+                new LearningService.FeedbackRequest(true, false, null), new User()));
+
+        assertTrue(thrown.getMessage().contains("does not belong"));
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
+    void rejectsNullReviewIdAgainstARealIssue() {
+        when(issueRepository.findById(ISSUE_ID))
+            .thenReturn(Optional.of(issueBelongingTo(REVIEW_A)));
+
+        assertThrows(IllegalArgumentException.class, () ->
+            service.submitFeedback(null, ISSUE_ID,
+                new LearningService.FeedbackRequest(true, false, null), new User()));
+
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
+    void rejectsIssueWithNoReview() {
+        ReviewIssue orphan = new ReviewIssue();
+        orphan.setId(ISSUE_ID);
+        when(issueRepository.findById(ISSUE_ID)).thenReturn(Optional.of(orphan));
+
+        assertThrows(IllegalArgumentException.class, () ->
+            service.submitFeedback(REVIEW_A, ISSUE_ID,
+                new LearningService.FeedbackRequest(true, false, null), new User()));
+
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
     void acceptsIssueBelongingToTheNamedReview() {
         // Repository is null, so updateRepoLearning is skipped — this test pins the
         // scope check only, not the learning-update behaviour.
