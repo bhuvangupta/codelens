@@ -4,6 +4,7 @@ import com.codelens.core.CommentFormatter;
 import com.codelens.core.DiffParser;
 import com.codelens.core.LanguageDetector;
 import com.codelens.core.ReviewEngine;
+import com.codelens.exception.NoOrganizationException;
 import com.codelens.git.GitProvider.InlineComment;
 import com.codelens.git.GitProvider.RepositoryInfo;
 import com.codelens.git.GitProviderFactory;
@@ -208,6 +209,15 @@ public class ReviewService implements ReviewExecutor {
                         user.getEmail(), org.getName());
                 }
             }
+        }
+
+        // Gate after the auto-association attempt above: a user whose email domain
+        // matches the repository's organization has just been enrolled (or has a
+        // pending request), so only a genuinely org-less user reaches this throw.
+        // Placed before the save and the async LLM trigger, so no budget is spent.
+        if (user != null && user.getOrganization() == null) {
+            throw new NoOrganizationException(
+                    "Join an organization before submitting reviews");
         }
 
         review = reviewRepository.save(review);
@@ -1001,6 +1011,15 @@ public class ReviewService implements ReviewExecutor {
                     }
                 }
             }
+        }
+
+        // Gate after the auto-association attempt above: a user whose email domain
+        // matches the repository's organization has just been enrolled (or has a
+        // pending request), so only a genuinely org-less user reaches this throw.
+        // Placed before the save and the async LLM trigger, so no budget is spent.
+        if (user != null && user.getOrganization() == null) {
+            throw new NoOrganizationException(
+                    "Join an organization before submitting reviews");
         }
 
         review = reviewRepository.save(review);

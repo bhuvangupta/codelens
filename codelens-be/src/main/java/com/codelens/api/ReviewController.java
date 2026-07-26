@@ -85,13 +85,6 @@ public class ReviewController {
                 auth.providerId(), auth.email(), auth.name(), auth.picture());
         }
 
-        // An org-less caller could spend LLM budget on a review it can never read
-        // back (every read endpoint is org-gated). Refuse at the source.
-        User submitter = auth != null ? userRepository.findByEmail(auth.email()).orElse(null) : null;
-        if (ReviewAccessPolicy.organizationIdOf(submitter) == null) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-
         boolean includeOptimization = Boolean.TRUE.equals(request.includeOptimization());
         Review review = reviewService.submitReview(
             request.prUrl(), sessionUser, includeOptimization,
@@ -117,12 +110,6 @@ public class ReviewController {
         if (auth != null) {
             sessionUser = new ReviewService.SessionUserInfo(
                 auth.providerId(), auth.email(), auth.name(), auth.picture());
-        }
-
-        // Same guard as submitReview: no organization, no spend.
-        User submitter = auth != null ? userRepository.findByEmail(auth.email()).orElse(null) : null;
-        if (ReviewAccessPolicy.organizationIdOf(submitter) == null) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
         boolean includeOptimization = Boolean.TRUE.equals(request.includeOptimization());

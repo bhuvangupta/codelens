@@ -1,5 +1,6 @@
 package com.codelens.api;
 
+import com.codelens.exception.NoOrganizationException;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
@@ -92,6 +93,22 @@ public class GlobalExceptionHandler {
         response.put("message", "A database error occurred. Please try again later.");
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+    }
+
+    /**
+     * Handle submissions from a user who belongs to no organization
+     */
+    @ExceptionHandler(NoOrganizationException.class)
+    public ResponseEntity<Map<String, Object>> handleNoOrganization(NoOrganizationException ex) {
+        log.warn("Review submitted by user with no organization: {}", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(Map.of(
+                "timestamp", LocalDateTime.now().toString(),
+                "status", 403,
+                "error", "Forbidden",
+                "message", ex.getMessage() != null ? ex.getMessage() : "Join an organization before submitting reviews"
+            ));
     }
 
     /**
