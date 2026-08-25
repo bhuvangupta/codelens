@@ -148,7 +148,7 @@ GOOGLE_AI_API_KEY=your-key    # https://makersuite.google.com/app/apikey
 OPENAI_API_KEY=your-key       # https://platform.openai.com/api-keys
 
 # GLM (ZhipuAI)
-GLM_API_KEY=your-key          # https://open.bigmodel.cn/
+ZAI_API_KEY=your-key          # https://open.bigmodel.cn/
 
 # Ollama (local)
 OLLAMA_BASE_URL=http://localhost:11434

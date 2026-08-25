@@ -51,7 +51,7 @@ echo "=== LLM Provider Configuration ==="
 echo "Configure at least one LLM provider. Press Enter to skip."
 echo ""
 
-prompt_with_default "GLM API Key (ZhipuAI)" "" GLM_API_KEY true
+prompt_with_default "ZhipuAI API Key (GLM)" "" ZAI_API_KEY true
 prompt_with_default "Anthropic API Key (Claude)" "" ANTHROPIC_API_KEY true
 prompt_with_default "Google API Key (Gemini)" "" GOOGLE_API_KEY true
 prompt_with_default "OpenAI API Key" "" OPENAI_API_KEY true
@@ -115,7 +115,7 @@ DB_PASSWORD=${DB_PASSWORD}
 
 # LLM Providers
 LLM_DEFAULT_PROVIDER=${DEFAULT_LLM}
-ZAI_API_KEY=${GLM_API_KEY}
+ZAI_API_KEY=${ZAI_API_KEY}
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 GOOGLE_API_KEY=${GOOGLE_API_KEY}
 OPENAI_API_KEY=${OPENAI_API_KEY}
