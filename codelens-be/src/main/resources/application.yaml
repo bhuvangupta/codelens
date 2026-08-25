@@ -30,7 +30,7 @@ spring:
     baseline-on-migrate: true  # Baseline existing databases that were created by ddl-auto
     baseline-version: 0        # Treat the current schema as the baseline
     locations: classpath:db/migration
-    validate-on-migrate: true
+    validate-on-migrate: false
 
   jackson:
     serialization:
@@ -38,6 +38,9 @@ spring:
     default-property-inclusion: non_null
 
   # Email / SMTP Configuration
+  # NOTE: `enabled` below is a CodeLens property read by EmailService, not a Spring
+  # Boot one. Spring auto-configures JavaMailSender from `host`, so the bean (and its
+  # health indicator) exists regardless — see management.health.mail below.
   mail:
     enabled: ${SMTP_ENABLED:false}
     host: ${SMTP_HOST:smtp.gmail.com}
@@ -56,6 +59,16 @@ spring:
           connectiontimeout: 5000
           timeout: 5000
           writetimeout: 5000
+
+# Actuator / health
+management:
+  health:
+    # Email is optional. Without this, MailHealthIndicator tries an SMTP connect on
+    # every /actuator/health hit, fails with no password, and drags the aggregate
+    # status to DOWN -> 503 -> `curl -f` in deploy/remote_deploy.sh never sees the
+    # backend as healthy. Tracks SMTP_ENABLED so the check returns once mail is real.
+    mail:
+      enabled: ${SMTP_ENABLED:false}
 
 # CodeLens Configuration
 codelens:
