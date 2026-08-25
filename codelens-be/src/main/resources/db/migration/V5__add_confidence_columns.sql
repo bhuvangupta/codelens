@@ -1,2 +1,2 @@
-ALTER TABLE review_issues ADD COLUMN confidence VARCHAR(10);
-ALTER TABLE review_comments ADD COLUMN confidence VARCHAR(10);
+ALTER TABLE review_issues ADD COLUMN IF NOT EXISTS confidence VARCHAR(10);
+ALTER TABLE review_comments ADD COLUMN IF NOT EXISTS confidence VARCHAR(10);
