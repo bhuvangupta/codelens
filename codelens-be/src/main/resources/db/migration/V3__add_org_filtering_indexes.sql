@@ -1,63 +1,63 @@
 -- Migration: Add indexes to optimize organization-scoped queries
 -- These indexes support the multi-tenant org filtering added for domain-based OAuth
--- DROP INDEX IF EXISTS is used to make this migration idempotent for databases
--- that already have these indexes (e.g., created previously by Hibernate ddl-auto).
+-- A stored procedure is used because older MySQL 8.0 versions do not support
+-- "CREATE INDEX IF NOT EXISTS" or "DROP INDEX IF EXISTS".
+
+DROP PROCEDURE IF EXISTS CreateIndexIfNotExists;
+
+DELIMITER $$
+
+CREATE PROCEDURE CreateIndexIfNotExists(
+    IN tableName VARCHAR(64),
+    IN indexName VARCHAR(64),
+    IN columnList VARCHAR(255)
+)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.statistics
+        WHERE table_schema = DATABASE()
+          AND table_name = tableName
+          AND index_name = indexName
+    ) THEN
+        SET @sql = CONCAT('CREATE INDEX ', indexName, ' ON ', tableName, ' (', columnList, ')');
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END$$
+
+DELIMITER ;
 
 -- ============================================================
 -- CRITICAL: User organization lookups
 -- ============================================================
--- Used by: findByOrganizationId(), organization member listing
-DROP INDEX IF EXISTS idx_users_organization_id ON users;
-CREATE INDEX idx_users_organization_id ON users(organization_id);
+CALL CreateIndexIfNotExists('users', 'idx_users_organization_id', 'organization_id');
 
 -- ============================================================
 -- CRITICAL: Review queries with user/org filtering
 -- ============================================================
--- Used by: findRecentReviewsByOrganization, user dashboard queries
-DROP INDEX IF EXISTS idx_reviews_user_created ON reviews;
-CREATE INDEX idx_reviews_user_created ON reviews(user_id, created_at);
-
--- Used by: countByOrganizationAndStatus, dashboard status counts
-DROP INDEX IF EXISTS idx_reviews_status_created ON reviews;
-CREATE INDEX idx_reviews_status_created ON reviews(status, created_at);
-
--- Used by: findByRepositoryOrderByCreatedAtDesc, repository-specific views
-DROP INDEX IF EXISTS idx_reviews_repository_created ON reviews;
-CREATE INDEX idx_reviews_repository_created ON reviews(repository_id, created_at);
-
--- Used by: countByDayAfterByOrganization, trend analytics
-DROP INDEX IF EXISTS idx_reviews_created_date ON reviews;
-CREATE INDEX idx_reviews_created_date ON reviews(created_at);
+CALL CreateIndexIfNotExists('reviews', 'idx_reviews_user_created', 'user_id, created_at');
+CALL CreateIndexIfNotExists('reviews', 'idx_reviews_status_created', 'status, created_at');
+CALL CreateIndexIfNotExists('reviews', 'idx_reviews_repository_created', 'repository_id, created_at');
+CALL CreateIndexIfNotExists('reviews', 'idx_reviews_created_date', 'created_at');
 
 -- ============================================================
 -- CRITICAL: Review issues queries
 -- ============================================================
--- Used by: findByReviewAndSeverity, issue detail pages
-DROP INDEX IF EXISTS idx_issues_review_severity ON review_issues;
-CREATE INDEX idx_issues_review_severity ON review_issues(review_id, severity);
-
--- Used by: findByReviewAndCategory, category-based filtering
-DROP INDEX IF EXISTS idx_issues_review_category ON review_issues;
-CREATE INDEX idx_issues_review_category ON review_issues(review_id, category);
-
--- Used by: countByDayAfterByOrganization, trend analytics
-DROP INDEX IF EXISTS idx_issues_created ON review_issues;
-CREATE INDEX idx_issues_created ON review_issues(created_at);
+CALL CreateIndexIfNotExists('review_issues', 'idx_issues_review_severity', 'review_id, severity');
+CALL CreateIndexIfNotExists('review_issues', 'idx_issues_review_category', 'review_id, category');
+CALL CreateIndexIfNotExists('review_issues', 'idx_issues_created', 'created_at');
 
 -- ============================================================
 -- HIGH: LLM usage analytics
 -- ============================================================
--- Used by: sumEstimatedCostByOrganizationAndCreatedAtAfter, cost analytics
-DROP INDEX IF EXISTS idx_llm_org_created ON llm_usage;
-CREATE INDEX idx_llm_org_created ON llm_usage(organization_id, created_at);
+CALL CreateIndexIfNotExists('llm_usage', 'idx_llm_org_created', 'organization_id, created_at');
 
 -- ============================================================
 -- MEDIUM: Additional composite indexes for common query patterns
 -- ============================================================
--- Used by: findDistinctRepositoryNamesByOrganization
-DROP INDEX IF EXISTS idx_reviews_user_repo_name ON reviews;
-CREATE INDEX idx_reviews_user_repo_name ON reviews(user_id, repository_name(100));
+CALL CreateIndexIfNotExists('reviews', 'idx_reviews_user_repo_name', 'user_id, repository_name(100)');
+CALL CreateIndexIfNotExists('review_issues', 'idx_issues_created_category', 'created_at, category');
 
--- Used by: findTopCategoriesByCountByOrganization (native query joins)
-DROP INDEX IF EXISTS idx_issues_created_category ON review_issues;
-CREATE INDEX idx_issues_created_category ON review_issues(created_at, category);
+DROP PROCEDURE CreateIndexIfNotExists;
