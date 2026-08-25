@@ -18,6 +18,8 @@ public interface ReviewIssueRepository extends JpaRepository<ReviewIssue, UUID> 
 
     List<ReviewIssue> findByReviewIdOrderBySeverityAscStartLineAsc(UUID reviewId);
 
+    boolean existsByIdAndReviewId(UUID issueId, UUID reviewId);
+
     List<ReviewIssue> findByReviewAndCategory(Review review, ReviewIssue.Category category);
 
     List<ReviewIssue> findByReviewIdAndCategory(UUID reviewId, ReviewIssue.Category category);

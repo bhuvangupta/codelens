@@ -37,15 +37,19 @@ public class GitLabWebhookController {
 
         log.info("Received GitLab webhook: {}", eventType);
 
-        // Verify token if webhook secret is configured
-        // Use constant-time comparison to prevent timing attacks
-        if (webhookSecret != null && !webhookSecret.isEmpty()) {
-            if (token == null || !MessageDigest.isEqual(
-                    webhookSecret.getBytes(StandardCharsets.UTF_8),
-                    token.getBytes(StandardCharsets.UTF_8))) {
-                log.warn("Invalid webhook token");
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
-            }
+        // Webhook secret is mandatory. Reject if not configured.
+        if (webhookSecret == null || webhookSecret.isEmpty()) {
+            log.warn("GitLab webhook secret is not configured");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("Webhook secret not configured");
+        }
+
+        // Verify token using constant-time comparison to prevent timing attacks
+        if (token == null || !MessageDigest.isEqual(
+                webhookSecret.getBytes(StandardCharsets.UTF_8),
+                token.getBytes(StandardCharsets.UTF_8))) {
+            log.warn("Invalid GitLab webhook token");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
         }
 
         try {

@@ -11,6 +11,7 @@ import com.codelens.model.entity.ReviewFileDiff;
 import com.codelens.model.entity.ReviewIssue;
 import com.codelens.model.entity.User;
 import com.codelens.repository.ReviewFileDiffRepository;
+import com.codelens.repository.ReviewIssueRepository;
 import com.codelens.repository.ReviewRepository;
 import com.codelens.repository.UserRepository;
 import com.codelens.security.AuthenticatedUser;
@@ -47,6 +48,7 @@ public class ReviewController {
     private final ReviewCancellationService cancellationService;
     private final UserRepository userRepository;
     private final ReviewFileDiffRepository fileDiffRepository;
+    private final ReviewIssueRepository reviewIssueRepository;
     private final LearningService learningService;
 
     public ReviewController(
@@ -56,6 +58,7 @@ public class ReviewController {
             ReviewCancellationService cancellationService,
             UserRepository userRepository,
             ReviewFileDiffRepository fileDiffRepository,
+            ReviewIssueRepository reviewIssueRepository,
             LearningService learningService) {
         this.reviewService = reviewService;
         this.reviewRepository = reviewRepository;
@@ -63,6 +66,7 @@ public class ReviewController {
         this.cancellationService = cancellationService;
         this.userRepository = userRepository;
         this.fileDiffRepository = fileDiffRepository;
+        this.reviewIssueRepository = reviewIssueRepository;
         this.learningService = learningService;
     }
 
@@ -234,6 +238,11 @@ public class ReviewController {
             return ResponseEntity.notFound().build();
         }
 
+        // Verify the issue belongs to the requested review to prevent IDOR across tenants
+        if (!reviewIssueRepository.existsByIdAndReviewId(issueId, reviewId)) {
+            return ResponseEntity.notFound().build();
+        }
+
         try {
             learningService.submitFeedback(
                     reviewId,
@@ -358,12 +367,9 @@ public class ReviewController {
             @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit,
             @RequestParam(required = false) String repository) {
 
-        UUID orgId = null;
-        if (auth != null) {
-            User user = userRepository.findByEmail(auth.email()).orElse(null);
-            if (user != null && user.getOrganization() != null) {
-                orgId = user.getOrganization().getId();
-            }
+        UUID orgId = resolveOrganizationId(auth);
+        if (orgId == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
         List<Review> reviews = reviewService.getRecentReviews(limit, repository, orgId);
@@ -380,12 +386,9 @@ public class ReviewController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @RequestParam(required = false) String repository) {
 
-        UUID orgId = null;
-        if (auth != null) {
-            User user = userRepository.findByEmail(auth.email()).orElse(null);
-            if (user != null && user.getOrganization() != null) {
-                orgId = user.getOrganization().getId();
-            }
+        UUID orgId = resolveOrganizationId(auth);
+        if (orgId == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
         var reviewsPage = reviewService.getRecentReviewsPaged(page, size, repository, orgId);
@@ -545,6 +548,20 @@ public class ReviewController {
                 diff.getPatch()
             );
         }
+    }
+
+    /**
+     * Resolve the authenticated user's organization id, or null if missing.
+     */
+    private UUID resolveOrganizationId(AuthenticatedUser auth) {
+        if (auth == null) {
+            return null;
+        }
+        User user = userRepository.findByEmail(auth.email()).orElse(null);
+        if (user == null || user.getOrganization() == null) {
+            return null;
+        }
+        return user.getOrganization().getId();
     }
 
     /**

@@ -37,14 +37,19 @@ public class BitbucketWebhookController {
 
         log.info("Received Bitbucket webhook: {}", eventKey);
 
-        // Verify webhook secret (Hook UUID) if configured
-        if (webhookSecret != null && !webhookSecret.isEmpty()) {
-            if (hookUuid == null || !MessageDigest.isEqual(
-                    webhookSecret.getBytes(StandardCharsets.UTF_8),
-                    hookUuid.getBytes(StandardCharsets.UTF_8))) {
-                log.warn("Invalid webhook hook UUID");
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid hook UUID");
-            }
+        // Webhook secret is mandatory. Reject if not configured.
+        if (webhookSecret == null || webhookSecret.isEmpty()) {
+            log.warn("Bitbucket webhook secret is not configured");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("Webhook secret not configured");
+        }
+
+        // Verify webhook secret (Hook UUID) using constant-time comparison
+        if (hookUuid == null || !MessageDigest.isEqual(
+                webhookSecret.getBytes(StandardCharsets.UTF_8),
+                hookUuid.getBytes(StandardCharsets.UTF_8))) {
+            log.warn("Invalid Bitbucket webhook hook UUID");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid hook UUID");
         }
 
         try {

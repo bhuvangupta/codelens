@@ -42,8 +42,17 @@ public class EncryptionService {
     public EncryptionService(
             @Value("${codelens.security.encryption-key:}") String encryptionKey,
             @Value("${codelens.security.encryption-enabled:true}") boolean enabled) {
+        boolean keyPresent = encryptionKey != null && !encryptionKey.isEmpty();
+
+        if (enabled && !keyPresent) {
+            throw new IllegalStateException(
+                    "Encryption is enabled but no ENCRYPTION_KEY is configured. " +
+                    "Set ENCRYPTION_KEY to a secure 32+ character random string, " +
+                    "or explicitly set ENCRYPTION_ENABLED=false to run without encryption.");
+        }
+
         this.encryptionKey = encryptionKey;
-        this.enabled = enabled && encryptionKey != null && !encryptionKey.isEmpty();
+        this.enabled = enabled && keyPresent;
 
         if (this.enabled) {
             log.info("Encryption service initialized with AES-256-GCM (PBKDF2 with random salt)");

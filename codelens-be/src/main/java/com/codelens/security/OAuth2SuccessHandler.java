@@ -6,6 +6,7 @@ import com.codelens.repository.UserRepository;
 import com.codelens.service.OrganizationService;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -156,14 +157,22 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         String accessToken = jwtService.generateAccessToken(email, name, picture, providerId);
         String refreshToken = jwtService.generateRefreshToken(email);
 
-        // Redirect to frontend with tokens
-        String redirectUrl = UriComponentsBuilder.fromUriString(successRedirectUrl)
-                .queryParam("access_token", accessToken)
-                .queryParam("refresh_token", refreshToken)
-                .build()
-                .toUriString();
+        // Set tokens as HttpOnly cookies so they are not exposed in URL or browser history.
+        // The frontend callback reads these cookies and stores them for subsequent requests.
+        addTokenCookie(request, response, "access_token", accessToken, 60 * 60); // 1 hour
+        addTokenCookie(request, response, "refresh_token", refreshToken, 60 * 60 * 24 * 7); // 7 days
 
-        getRedirectStrategy().sendRedirect(request, response, redirectUrl);
+        getRedirectStrategy().sendRedirect(request, response, successRedirectUrl);
+    }
+
+    private void addTokenCookie(HttpServletRequest request, HttpServletResponse response,
+                                String name, String value, int maxAgeSeconds) {
+        Cookie cookie = new Cookie(name, value);
+        cookie.setPath("/");
+        cookie.setHttpOnly(true);
+        cookie.setSecure(request.isSecure());
+        cookie.setMaxAge(maxAgeSeconds);
+        response.addCookie(cookie);
     }
 
     /**

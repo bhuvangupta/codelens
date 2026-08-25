@@ -43,7 +43,7 @@ if [ ! -f "$JAR_FILE" ]; then
     echo "Building backend..."
     mvn clean package -DskipTests -q
 fi
-export GLM_API_KEY=b1c97ffd4b744aa390fecb0a89e31b6a.3rERBPfg0OBcPDBF
+
 echo "Starting backend in $MODE mode..."
 echo ""
 

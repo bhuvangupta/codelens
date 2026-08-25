@@ -5,6 +5,7 @@
 	import { reviews, learning, settings } from '$lib/api/client';
 	import type { ReviewDetail, ReviewIssue, ReviewStatus, OptimizationStatus, DiffResponse, FileDiff, LearningStats } from '$lib/api/client';
 	import DiffViewer from '$lib/components/DiffViewer.svelte';
+	import DOMPurify from 'dompurify';
 
 	let review = $state<ReviewDetail | null>(null);
 	let loading = $state(true);
@@ -57,7 +58,8 @@
 	function renderMarkdown(text: string): string {
 		if (!text) return '';
 		if (!markedInstance) return text; // Fallback to plain text during SSR
-		return markedInstance.marked.parse(text) as string;
+		const rawHtml = markedInstance.marked.parse(text) as string;
+		return DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } }) as string;
 	}
 
 	/**

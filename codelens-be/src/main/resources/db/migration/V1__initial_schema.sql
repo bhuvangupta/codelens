@@ -44,8 +44,8 @@ CREATE TABLE IF NOT EXISTS users (
     CONSTRAINT fk_users_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_provider ON users(provider, provider_id);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_provider ON users(provider, provider_id);
 
 -- Repositories
 CREATE TABLE IF NOT EXISTS repositories (
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS repositories (
     full_name VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     owner VARCHAR(255) NOT NULL,
-    provider ENUM('GITHUB', 'GITLAB') NOT NULL,
+    provider ENUM('GITHUB', 'GITLAB', 'BITBUCKET') NOT NULL,
     provider_repo_id VARCHAR(255),
     organization_id BINARY(16),
     auto_review_enabled BOOLEAN DEFAULT TRUE,
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS repositories (
     UNIQUE KEY uk_fullname_provider (full_name, provider)
 );
 
-CREATE INDEX IF NOT EXISTS idx_repos_org ON repositories(organization_id);
+CREATE INDEX idx_repos_org ON repositories(organization_id);
 
 -- Reviews
 CREATE TABLE IF NOT EXISTS reviews (
@@ -132,10 +132,10 @@ CREATE TABLE IF NOT EXISTS reviews (
     CONSTRAINT fk_reviews_cancelled_by FOREIGN KEY (cancelled_by_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_reviews_status ON reviews(status);
-CREATE INDEX IF NOT EXISTS idx_reviews_user ON reviews(user_id);
-CREATE INDEX IF NOT EXISTS idx_reviews_repo ON reviews(repository_id);
-CREATE INDEX IF NOT EXISTS idx_reviews_created ON reviews(created_at DESC);
+CREATE INDEX idx_reviews_status ON reviews(status);
+CREATE INDEX idx_reviews_user ON reviews(user_id);
+CREATE INDEX idx_reviews_repo ON reviews(repository_id);
+CREATE INDEX idx_reviews_created ON reviews(created_at DESC);
 
 -- Review Issues
 CREATE TABLE IF NOT EXISTS review_issues (
@@ -160,8 +160,8 @@ CREATE TABLE IF NOT EXISTS review_issues (
     CONSTRAINT fk_issues_review FOREIGN KEY (review_id) REFERENCES reviews(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_issues_review ON review_issues(review_id);
-CREATE INDEX IF NOT EXISTS idx_issues_severity ON review_issues(severity);
+CREATE INDEX idx_issues_review ON review_issues(review_id);
+CREATE INDEX idx_issues_severity ON review_issues(severity);
 
 -- Review Comments
 CREATE TABLE IF NOT EXISTS review_comments (
@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS review_comments (
     CONSTRAINT fk_comments_review FOREIGN KEY (review_id) REFERENCES reviews(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_comments_review ON review_comments(review_id);
+CREATE INDEX idx_comments_review ON review_comments(review_id);
 
 -- Review File Diffs
 CREATE TABLE IF NOT EXISTS review_file_diffs (
@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS review_file_diffs (
     CONSTRAINT fk_file_diffs_review FOREIGN KEY (review_id) REFERENCES reviews(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_file_diffs_review ON review_file_diffs(review_id);
+CREATE INDEX idx_file_diffs_review ON review_file_diffs(review_id);
 
 -- LLM Usage Tracking
 CREATE TABLE IF NOT EXISTS llm_usage (
@@ -222,8 +222,8 @@ CREATE TABLE IF NOT EXISTS llm_usage (
     CONSTRAINT fk_llm_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_llm_org ON llm_usage(organization_id);
-CREATE INDEX IF NOT EXISTS idx_llm_created ON llm_usage(created_at);
+CREATE INDEX idx_llm_org ON llm_usage(organization_id);
+CREATE INDEX idx_llm_created ON llm_usage(created_at);
 
 -- Membership Requests
 CREATE TABLE IF NOT EXISTS membership_requests (
@@ -239,7 +239,7 @@ CREATE TABLE IF NOT EXISTS membership_requests (
     CONSTRAINT fk_membership_reviewer FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_membership_org ON membership_requests(organization_id, status);
+CREATE INDEX idx_membership_org ON membership_requests(organization_id, status);
 
 -- Custom Review Rules
 CREATE TABLE IF NOT EXISTS review_rules (
@@ -261,7 +261,7 @@ CREATE TABLE IF NOT EXISTS review_rules (
     CONSTRAINT fk_rules_creator FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_rules_org ON review_rules(organization_id, enabled);
+CREATE INDEX idx_rules_org ON review_rules(organization_id, enabled);
 
 -- Notifications
 CREATE TABLE IF NOT EXISTS notifications (
@@ -278,7 +278,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     CONSTRAINT fk_notifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, is_read, created_at DESC);
+CREATE INDEX idx_notifications_user_unread ON notifications(user_id, is_read, created_at DESC);
 
 -- Notification Preferences
 CREATE TABLE IF NOT EXISTS notification_preferences (
@@ -312,7 +312,7 @@ CREATE TABLE IF NOT EXISTS webhook_configs (
     CONSTRAINT fk_webhooks_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_webhooks_org ON webhook_configs(organization_id, enabled);
+CREATE INDEX idx_webhooks_org ON webhook_configs(organization_id, enabled);
 
 -- Webhook Deliveries
 CREATE TABLE IF NOT EXISTS webhook_deliveries (
@@ -329,4 +329,4 @@ CREATE TABLE IF NOT EXISTS webhook_deliveries (
     CONSTRAINT fk_deliveries_webhook FOREIGN KEY (webhook_config_id) REFERENCES webhook_configs(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_deliveries_config ON webhook_deliveries(webhook_config_id, created_at DESC);
+CREATE INDEX idx_deliveries_config ON webhook_deliveries(webhook_config_id, created_at DESC);

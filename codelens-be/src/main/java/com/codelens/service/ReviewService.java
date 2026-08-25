@@ -824,23 +824,19 @@ public class ReviewService implements ReviewExecutor {
     }
 
     /**
-     * Get recent reviews with optional repository filter (filtered by organization)
+     * Get recent reviews with optional repository filter (filtered by organization).
+     * Users without an organization see an empty list — never a global view.
      */
     public List<Review> getRecentReviews(int limit, String repositoryName, UUID organizationId) {
-        if (organizationId != null) {
-            if (repositoryName != null && !repositoryName.isEmpty()) {
-                return reviewRepository.findByOrganizationAndRepositoryName(
-                    organizationId, repositoryName, org.springframework.data.domain.PageRequest.of(0, limit));
-            }
-            return reviewRepository.findRecentReviewsByOrganization(
-                organizationId, org.springframework.data.domain.PageRequest.of(0, limit));
+        if (organizationId == null) {
+            return List.of();
         }
-        // Fallback for users without organization (shouldn't happen in production)
         if (repositoryName != null && !repositoryName.isEmpty()) {
-            return reviewRepository.findByRepositoryNameOrderByCreatedAtDesc(
-                repositoryName, org.springframework.data.domain.PageRequest.of(0, limit));
+            return reviewRepository.findByOrganizationAndRepositoryName(
+                organizationId, repositoryName, org.springframework.data.domain.PageRequest.of(0, limit));
         }
-        return reviewRepository.findRecentReviews(org.springframework.data.domain.PageRequest.of(0, limit));
+        return reviewRepository.findRecentReviewsByOrganization(
+            organizationId, org.springframework.data.domain.PageRequest.of(0, limit));
     }
 
     /**
@@ -891,22 +887,14 @@ public class ReviewService implements ReviewExecutor {
     }
 
     /**
-     * Get distinct repository names filtered by organization
+     * Get distinct repository names filtered by organization.
+     * Users without an organization see an empty list.
      */
     public List<String> getDistinctRepositoryNames(UUID organizationId) {
-        if (organizationId != null) {
-            return reviewRepository.findDistinctRepositoryNamesByOrganization(organizationId);
+        if (organizationId == null) {
+            return List.of();
         }
-        return reviewRepository.findDistinctRepositoryNames();
-    }
-
-    /**
-     * Get distinct repository names (all - no org filter)
-     * @deprecated Use getDistinctRepositoryNames(UUID) instead
-     */
-    @Deprecated
-    public List<String> getDistinctRepositoryNames() {
-        return getDistinctRepositoryNames(null);
+        return reviewRepository.findDistinctRepositoryNamesByOrganization(organizationId);
     }
 
     /**

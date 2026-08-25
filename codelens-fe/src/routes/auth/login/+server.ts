@@ -15,8 +15,11 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 		throw redirect(302, '/?error=invalid_provider');
 	}
 
+	// Only allow redirects to known internal paths to prevent open redirect attacks.
+	const ALLOWED_REDIRECTS = /^\/(dashboard|reviews|analytics|settings)(\/.*)?$/;
+
 	// Store redirect path in cookie for after OAuth completes
-	if (redirectPath) {
+	if (redirectPath && ALLOWED_REDIRECTS.test(redirectPath)) {
 		cookies.set('auth_redirect', redirectPath, {
 			path: '/',
 			httpOnly: true,

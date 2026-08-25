@@ -6,8 +6,9 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 	console.log('[Auth Callback] URL:', url.toString());
 	console.log('[Auth Callback] Search params:', Object.fromEntries(url.searchParams.entries()));
 
-	const accessToken = url.searchParams.get('access_token');
-	const refreshToken = url.searchParams.get('refresh_token');
+	// Tokens are now delivered as HttpOnly cookies by the backend instead of URL query parameters.
+	const accessToken = cookies.get('access_token');
+	const refreshToken = cookies.get('refresh_token');
 	const error = url.searchParams.get('error');
 
 	if (error) {

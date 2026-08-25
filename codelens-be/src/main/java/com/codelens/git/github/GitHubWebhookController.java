@@ -42,12 +42,17 @@ public class GitHubWebhookController {
 
         log.info("Received GitHub webhook: {}", eventType);
 
-        // Verify signature if webhook secret is configured
-        if (webhookSecret != null && !webhookSecret.isEmpty()) {
-            if (!verifySignature(payload, signature)) {
-                log.warn("Invalid webhook signature");
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid signature");
-            }
+        // Webhook secret is mandatory. Reject if not configured.
+        if (webhookSecret == null || webhookSecret.isEmpty()) {
+            log.warn("GitHub webhook secret is not configured");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("Webhook secret not configured");
+        }
+
+        // Verify signature
+        if (!verifySignature(payload, signature)) {
+            log.warn("Invalid GitHub webhook signature");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid signature");
         }
 
         try {
