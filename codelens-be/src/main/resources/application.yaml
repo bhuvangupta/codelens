@@ -92,7 +92,7 @@ codelens:
     # ollama        | devstral-small, codellama, llama3.1, deepseek-coder-v2, qwen2.5-coder
     # claude        | claude-sonnet-4-20250514, claude-3-5-sonnet-20241022
     # claude-opus   | claude-opus-4-6 (premium security analysis)
-    # gemini        | gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash
+    # gemini        | gemini-3.8-flash, gemini-3.7-flash, gemini-2.5-flash
     # gemini-pro    | gemini-2.5-pro, gemini-1.5-pro (higher quality, slower)
     # openai        | gpt-4o, gpt-4o-mini, gpt-4-turbo, o1, o1-mini
     # glm           | glm-4, glm-4-flash (ZhipuAI)
@@ -116,10 +116,14 @@ codelens:
 
       gemini:
         # Google - fast and cost-effective
-        # Models: gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash
+        # Models: gemini-3.8-flash, gemini-3.7-flash, gemini-2.5-flash
         enabled: true
-        model: gemini-2.5-flash
+        model: ${GEMINI_MODEL:gemini-3.8-flash}
         api-key: ${GOOGLE_API_KEY:}
+        # 4096 truncated multi-issue reviews mid-JSON. Gemini 3.x allows up to 65536,
+        # but 16384 is ample for the "max 5-7 issues" response the prompts request.
+        max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:16384}
+        # temperature intentionally unset: Gemini 3.x uses its own default when omitted.
 
       gemini-pro:
         # Google Pro - higher quality, slower

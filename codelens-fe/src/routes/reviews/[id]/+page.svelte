@@ -656,6 +656,40 @@
 			</div>
 		{/if}
 
+		<!-- Coverage notice: shown when the review did not fully cover the PR -->
+		{#if review.status === 'COMPLETED' && ((review.filesFailedCount ?? 0) > 0 || (review.filesSkippedCount ?? 0) > 0)}
+			<div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-6">
+				<div class="flex items-start gap-3">
+					<div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+						<i class="fas fa-triangle-exclamation text-amber-600"></i>
+					</div>
+					<div class="flex-1 min-w-0">
+						<h3 class="font-semibold text-amber-900 mb-1">Partial coverage</h3>
+						<p class="text-sm text-amber-800 mb-2">
+							Some files in this pull request were not fully reviewed. Absence of findings in
+							those files does not mean they are clean.
+						</p>
+						<ul class="text-sm text-amber-800 space-y-1">
+							{#if (review.filesSkippedCount ?? 0) > 0}
+								<li>
+									<span class="font-semibold">{review.filesSkippedCount}</span>
+									file{(review.filesSkippedCount ?? 0) > 1 ? 's were' : ' was'} not reviewed because the
+									pull request exceeded the per-review file limit.
+								</li>
+							{/if}
+							{#if (review.filesFailedCount ?? 0) > 0}
+								<li>
+									<span class="font-semibold">{review.filesFailedCount}</span>
+									file{(review.filesFailedCount ?? 0) > 1 ? 's' : ''} returned unusable model output
+									(the response errored, was cut off, or could not be parsed).
+								</li>
+							{/if}
+						</ul>
+					</div>
+				</div>
+			</div>
+		{/if}
+
 		<!-- AI Summary -->
 		{#if review.summary}
 			<div class="gradient-border mb-6">

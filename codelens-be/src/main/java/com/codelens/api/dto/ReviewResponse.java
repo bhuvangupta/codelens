@@ -31,6 +31,9 @@ public record ReviewResponse(
     Integer inputTokens,
     Integer outputTokens,
     Double estimatedCost,
+    // Review health: files that yielded nothing for a reason other than being clean
+    Integer filesFailedCount,
+    Integer filesSkippedCount,
     LocalDateTime createdAt,
     LocalDateTime completedAt,
     // Ticket scope validation
@@ -65,6 +68,8 @@ public record ReviewResponse(
             review.getInputTokens(),
             review.getOutputTokens(),
             review.getEstimatedCost(),
+            review.getFilesFailedCount(),
+            review.getFilesSkippedCount(),
             review.getCreatedAt(),
             review.getCompletedAt(),
             review.getTicketContent(),
@@ -100,6 +105,8 @@ public record ReviewResponse(
             review.getInputTokens(),
             review.getOutputTokens(),
             review.getEstimatedCost(),
+            review.getFilesFailedCount(),
+            review.getFilesSkippedCount(),
             review.getCreatedAt(),
             review.getCompletedAt(),
             review.getTicketContent(),

@@ -6,6 +6,7 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.model.output.FinishReason;
 import dev.langchain4j.model.output.Response;
 import lombok.extern.slf4j.Slf4j;
 
@@ -68,16 +69,37 @@ public abstract class AbstractLlmProvider implements LlmProvider {
                 outputTokens = estimateTokens(response.content().text());
             }
 
+            // A truncated or filtered completion is the usual cause of unparseable
+            // review JSON. Surface it instead of letting the parser fail quietly.
+            FinishReason finishReason = response.finishReason();
+            boolean truncated = finishReason == FinishReason.LENGTH;
+            if (truncated) {
+                log.warn("Provider {} ({}) hit the output token limit after {} output tokens; "
+                        + "response is truncated and may not parse. Raise max-output-tokens.",
+                    getName(), modelName(), outputTokens);
+            } else if (finishReason == FinishReason.CONTENT_FILTER) {
+                log.warn("Provider {} ({}) stopped on a content filter; response is incomplete.",
+                    getName(), modelName());
+            }
+
             return new LlmResponse(
                 response.content().text(),
                 inputTokens,
-                outputTokens
+                outputTokens,
+                truncated
             );
 
         } catch (Exception e) {
             log.error("LLM chat failed for provider {}: {}", getName(), e.getMessage(), e);
             throw new RuntimeException("LLM chat failed: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Model identifier for logging. Subclasses override to name the concrete model.
+     */
+    protected String modelName() {
+        return "unknown";
     }
 
     /**

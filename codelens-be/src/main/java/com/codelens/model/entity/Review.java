@@ -111,6 +111,12 @@ public class Review {
     private Integer filesReviewedCount;
     private String currentFile;  // Currently being reviewed
 
+    // Review health: files that produced no findings for a reason other than being clean.
+    // filesFailedCount  - LLM output was missing, truncated or unparseable
+    // filesSkippedCount - reviewable files dropped because the PR exceeded max-files
+    private Integer filesFailedCount;
+    private Integer filesSkippedCount;
+
     // Optimization analysis
     @Builder.Default
     private Boolean includeOptimization = false;

@@ -258,7 +258,8 @@ public class ReviewProgressService {
             int criticalIssues, int highIssues, int mediumIssues, int lowIssues,
             int inputTokens, int outputTokens,
             String ticketScopeResult, Boolean ticketScopeAligned,
-            String llmProvider, Double estimatedCost, String rawDiff) {
+            String llmProvider, Double estimatedCost, String rawDiff,
+            int filesFailedCount, int filesSkippedCount) {
         Review review = reviewRepository.findById(reviewId)
             .orElseThrow(() -> new IllegalArgumentException("Review not found: " + reviewId));
         review.setSummary(summary);
@@ -277,9 +278,16 @@ public class ReviewProgressService {
         review.setLlmProvider(llmProvider);
         review.setEstimatedCost(estimatedCost);
         review.setRawDiff(rawDiff);
+        review.setFilesFailedCount(filesFailedCount);
+        review.setFilesSkippedCount(filesSkippedCount);
         review.setStatus(Review.ReviewStatus.COMPLETED);
         review.setCompletedAt(LocalDateTime.now());
         reviewRepository.save(review);
+        if (filesFailedCount > 0 || filesSkippedCount > 0) {
+            log.warn("Review {} completed with reduced coverage: {} file(s) produced unusable LLM output, "
+                    + "{} file(s) were not reviewed (max-files cap)",
+                reviewId, filesFailedCount, filesSkippedCount);
+        }
         log.info("Review {} results saved (status=COMPLETED)", reviewId);
     }
 

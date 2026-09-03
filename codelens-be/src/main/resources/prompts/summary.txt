@@ -7,9 +7,11 @@ You are an expert code reviewer. Analyze this pull request and provide a structu
 {{description}}
 
 ## Changed Files:
+Each line is `- path (+added/-deleted): changed functions`.
 {{files}}
 
 ## Issues Found: {{issue_count}}
+{{findings}}
 
 ## Instructions:
 Provide a summary in this exact format:
@@ -35,5 +37,9 @@ Provide a summary in this exact format:
 **Guidelines:**
 - Be direct and technical, no marketing language
 - Focus on what changed, why it matters, and any risks
-- If {{issue_count}} > 0, highlight the most critical issues
+- If {{issue_count}} > 0, highlight the most critical issues by name from the list above
 - Keep the summary actionable for reviewers
+- Ground every claim in the changed files and findings above. You are shown paths and
+  changed function names, not file bodies, so describe what the change set indicates
+  and say "unclear from the diff" rather than inventing intent or behaviour
+- Base Test Coverage on whether test files appear in the changed file list, not on a guess

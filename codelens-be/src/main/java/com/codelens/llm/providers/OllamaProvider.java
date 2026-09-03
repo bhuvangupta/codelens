@@ -27,6 +27,11 @@ public class OllamaProvider extends AbstractLlmProvider {
     }
 
     @Override
+    protected String modelName() {
+        return model;
+    }
+
+    @Override
     public boolean isEnabled() {
         return enabled && baseUrl != null && !baseUrl.isEmpty();
     }

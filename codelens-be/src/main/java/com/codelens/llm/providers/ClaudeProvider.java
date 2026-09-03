@@ -25,6 +25,11 @@ public class ClaudeProvider extends AbstractLlmProvider {
     }
 
     @Override
+    protected String modelName() {
+        return model;
+    }
+
+    @Override
     public boolean isEnabled() {
         return enabled && apiKey != null && !apiKey.isEmpty();
     }

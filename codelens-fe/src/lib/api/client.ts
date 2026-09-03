@@ -336,6 +336,9 @@ export interface Review {
 	inputTokens?: number | null;
 	outputTokens?: number | null;
 	estimatedCost?: number | null;
+	// Review health: files that produced no findings for a reason other than being clean
+	filesFailedCount?: number | null;
+	filesSkippedCount?: number | null;
 	createdAt: string;
 	completedAt: string | null;
 	cancelledAt?: string | null;

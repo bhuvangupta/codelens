@@ -25,6 +25,11 @@ public class ClaudeOpusProvider extends AbstractLlmProvider {
     }
 
     @Override
+    protected String modelName() {
+        return model;
+    }
+
+    @Override
     public boolean isEnabled() {
         return enabled && apiKey != null && !apiKey.isEmpty();
     }
@@ -45,9 +50,11 @@ public class ClaudeOpusProvider extends AbstractLlmProvider {
 
     @Override
     public double estimateCost(int inputTokens, int outputTokens) {
-        // Claude Opus 4.6 pricing: $15/1M input, $75/1M output
-        double inputCost = inputTokens * 15.0 / 1_000_000;
-        double outputCost = outputTokens * 75.0 / 1_000_000;
+        // Claude Opus 4.6, verified against platform.claude.com pricing on 2026-09-03:
+        // $5/1M input, $25/1M output. The previous $15/$75 constants were ~3x too high
+        // and inflated every recorded security-scan cost.
+        double inputCost = inputTokens * 5.0 / 1_000_000;
+        double outputCost = outputTokens * 25.0 / 1_000_000;
         return inputCost + outputCost;
     }
 }

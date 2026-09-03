@@ -271,11 +271,16 @@ public class ReviewEngine {
         log.info("After filtering: {} files to review (skipped {})",
             filesToReview.size(), changedFiles.size() - filesToReview.size());
 
-        // Limit files if necessary
+        // Limit files if necessary. Dropped files are recorded on the review so the
+        // result does not silently claim to have covered the whole PR.
+        int filesSkipped = 0;
         if (filesToReview.size() > maxFiles) {
-            log.warn("PR has {} reviewable files, limiting to {}", filesToReview.size(), maxFiles);
+            filesSkipped = filesToReview.size() - maxFiles;
+            log.warn("PR has {} reviewable files, limiting to {} ({} not reviewed)",
+                filesToReview.size(), maxFiles, filesSkipped);
             filesToReview = filesToReview.subList(0, maxFiles);
         }
+        final int filesSkippedCount = filesSkipped;
 
         final int totalFiles = filesToReview.size();
 
@@ -300,6 +305,7 @@ public class ReviewEngine {
         AtomicInteger totalOutputTokens = new AtomicInteger(0);
         java.util.concurrent.atomic.DoubleAdder totalEstimatedCost = new java.util.concurrent.atomic.DoubleAdder();
         AtomicInteger filesCompleted = new AtomicInteger(0);
+        AtomicInteger filesFailed = new AtomicInteger(0);
 
         // Review files in parallel
         ExecutorService executor = Executors.newFixedThreadPool(parallelThreads);
@@ -330,6 +336,9 @@ public class ReviewEngine {
                             request.organizationId(), lintConfigBundle, repoRules,
                             learningContext, manifestEntries
                         );
+                        if (fileResult.degraded()) {
+                            filesFailed.incrementAndGet();
+                        }
                         allIssues.addAll(fileResult.issues());
                         allComments.addAll(fileResult.comments());
                         totalInputTokens.addAndGet(fileResult.inputTokens());
@@ -355,6 +364,7 @@ public class ReviewEngine {
                             cancelled.set(true);
                         } else {
                             log.error("Error reviewing file: {}", file.filename(), e);
+                            filesFailed.incrementAndGet();
                         }
                         filesCompleted.incrementAndGet();
                     }
@@ -382,7 +392,7 @@ public class ReviewEngine {
         }
 
         // Generate summary
-        String summary = generateSummary(prInfo, finalFilesToReview, new ArrayList<>(allIssues));
+        String summary = generateSummary(prInfo, finalFilesToReview, new ArrayList<>(allIssues), manifestEntries);
 
         // Validate ticket scope if ticket content provided
         TicketScopeValidation ticketScopeValidation = validateTicketScope(
@@ -397,8 +407,8 @@ public class ReviewEngine {
             .mapToInt(ChangedFile::deletions).sum();
 
         long elapsed = System.currentTimeMillis() - startTime;
-        log.info("Review completed in {}ms for {} files with {} issues",
-            elapsed, finalFilesToReview.size(), allIssues.size());
+        log.info("Review completed in {}ms for {} files with {} issues ({} degraded, {} skipped over max-files)",
+            elapsed, finalFilesToReview.size(), allIssues.size(), filesFailed.get(), filesSkippedCount);
 
         // Report completion
         if (progressCallback != null) {
@@ -426,7 +436,9 @@ public class ReviewEngine {
             diff,
             parsedDiffs,
             ticketScopeValidation != null ? ticketScopeValidation.result() : null,
-            ticketScopeValidation != null ? ticketScopeValidation.aligned() : null
+            ticketScopeValidation != null ? ticketScopeValidation.aligned() : null,
+            filesFailed.get(),
+            filesSkippedCount
         );
     }
 
@@ -620,6 +632,9 @@ public class ReviewEngine {
         SmartContextExtractor.ExtractionResult extraction =
             smartContextExtractor.extract(file.filename(), fileContent, file.patch());
 
+        // Tracks whether the LLM produced usable output for this file (see FileReviewResult).
+        boolean degraded = false;
+
         if (extraction.mode() == SmartContextExtractor.ReviewMode.SKIP_LLM) {
             log.info("Skipping LLM review for {} ({}), static analysis only",
                 file.filename(), extraction.reason());
@@ -639,14 +654,16 @@ public class ReviewEngine {
 
                 // Parse security scan response (same format as review)
                 // Filter to changed lines to prevent LLM hallucinations for unchanged code
-                parseReviewResponse(response.content(), file.filename(), prInfo.headCommitSha(),
+                boolean parsed = parseReviewResponse(response.content(), file.filename(), prInfo.headCommitSha(),
                     issues, comments, ignoredLines, changedLines);
+                degraded = !parsed || response.truncated();
 
                 log.debug("Security scan for {} used {} input, {} output tokens",
                     file.filename(), inputTokens, outputTokens);
 
             } catch (Exception e) {
                 log.error("Error running security scan for {}", file.filename(), e);
+                degraded = true;
             }
         } else {
             // Enrich with code intelligence graph context if available
@@ -677,14 +694,16 @@ public class ReviewEngine {
 
                 // Parse LLM response into issues and comments
                 // Filter to changed lines to prevent LLM hallucinations for unchanged code
-                parseReviewResponse(response.content(), file.filename(), prInfo.headCommitSha(),
+                boolean parsed = parseReviewResponse(response.content(), file.filename(), prInfo.headCommitSha(),
                     issues, comments, ignoredLines, changedLines);
+                degraded = !parsed || response.truncated();
 
                 log.debug("LLM review for {} used {} input, {} output tokens (mode: {})",
                     file.filename(), inputTokens, outputTokens, extraction.mode());
 
             } catch (Exception e) {
                 log.error("Error getting LLM review for {}", file.filename(), e);
+                degraded = true;
             }
         }
 
@@ -769,7 +788,8 @@ public class ReviewEngine {
         return new FileReviewResult(issues, comments,
             inputTokens + verificationInputTokens,
             outputTokens + verificationOutputTokens,
-            fileCost);
+            fileCost,
+            degraded);
     }
 
     /**
@@ -919,17 +939,43 @@ public class ReviewEngine {
         String safePatch = patch != null ? secretRedactor.redactSecrets(patch) : "";
         String safeContext = secretRedactor.redactSecrets(contextToSend);
 
+        // Prompt layout is ordered for prefix reuse: everything identical across the
+        // files of one PR (language template, repo rules, learned hints) comes first,
+        // and everything that varies per file (diff, extracted context, graph, manifest)
+        // comes last. Implicit prompt caching only rewards a shared leading prefix, so
+        // putting the diff at the top — as this template used to — guaranteed a miss.
+        String projectContext = buildProjectContextBlock(customRepoRules, learnedHints);
+        String fileContext = buildFileContextBlock(graphContextBlock, manifestBlock);
+
         String prompt = template
+            .replace("{{project_context}}", projectContext)
+            .replace("{{file_context}}", fileContext)
             .replace("{{filename}}", filename)
             .replace("{{patch}}", safePatch)
             .replace("{{file_content}}", safeContext);
 
-        // Append custom repo rules if available (passed as parameter for async safety)
-        if (customRepoRules != null && !customRepoRules.isBlank()) {
-            prompt = prompt + "\n\n---\n\n## Additional Project-Specific Rules\n\n" + customRepoRules;
+        // Fallback for templates that predate the ordered layout (e.g. the built-in
+        // default used when a prompt file cannot be loaded): append rather than drop.
+        if (!template.contains("{{project_context}}") && !projectContext.isBlank()) {
+            prompt = prompt + projectContext;
+        }
+        if (!template.contains("{{file_context}}") && !fileContext.isBlank()) {
+            prompt = prompt + fileContext;
         }
 
-        // Append learned hints from team feedback
+        return prompt;
+    }
+
+    /**
+     * PR-invariant prompt section: identical for every file reviewed in one PR.
+     */
+    static String buildProjectContextBlock(String customRepoRules, List<String> learnedHints) {
+        StringBuilder sb = new StringBuilder();
+
+        if (customRepoRules != null && !customRepoRules.isBlank()) {
+            sb.append("\n\n---\n\n## Additional Project-Specific Rules\n\n").append(customRepoRules);
+        }
+
         if (learnedHints != null && !learnedHints.isEmpty()) {
             String hintsBlock = learnedHints.stream()
                 .limit(10)
@@ -938,20 +984,28 @@ public class ReviewEngine {
             if (hintsBlock.length() > 2000) {
                 hintsBlock = hintsBlock.substring(0, 2000) + "\n[Truncated]";
             }
-            prompt = prompt + hintsBlock;
+            sb.append(hintsBlock);
         }
 
-        // Append code intelligence graph context (callers, tests, endpoints, DI)
+        return sb.toString();
+    }
+
+    /**
+     * Per-file prompt section: code intelligence graph context and the PR-wide change
+     * manifest, both of which differ from file to file.
+     */
+    static String buildFileContextBlock(String graphContextBlock, String manifestBlock) {
+        StringBuilder sb = new StringBuilder();
+
         if (graphContextBlock != null && !graphContextBlock.isBlank()) {
-            prompt = prompt + "\n\n---\n" + graphContextBlock;
+            sb.append("\n\n---\n").append(graphContextBlock);
         }
 
-        // Append PR-wide change manifest (cross-file context)
         if (manifestBlock != null && !manifestBlock.isBlank()) {
-            prompt = prompt + "\n\n---\n\n" + manifestBlock;
+            sb.append("\n\n---\n\n").append(manifestBlock);
         }
 
-        return prompt;
+        return sb.toString();
     }
 
     /**
@@ -970,20 +1024,88 @@ public class ReviewEngine {
         return "review.txt";
     }
 
-    private String generateSummary(PullRequestInfo prInfo, List<ChangedFile> files, List<ReviewIssue> issues) {
-        String template = loadPromptTemplate("summary.txt");
+    /** Caps on what the summary prompt may carry, so a huge PR cannot blow up the call. */
+    private static final int MAX_SUMMARY_FILE_CHARS = 4000;
+    private static final int MAX_SUMMARY_FINDINGS = 40;
+    private static final int MAX_SUMMARY_FINDING_CHARS = 4000;
 
-        StringBuilder fileList = new StringBuilder();
-        for (ChangedFile file : files) {
-            fileList.append("- ").append(file.filename())
-                .append(" (+").append(file.additions())
-                .append("/-").append(file.deletions()).append(")\n");
+    /**
+     * File list for the summary prompt. Uses the change-manifest entries, which carry
+     * the changed function names from each diff's hunk headers, rather than bare
+     * filenames — the summary model has no other view of what the code actually does.
+     */
+    static String formatFileListForSummary(List<ChangeManifestBuilder.Entry> entries) {
+        if (entries == null || entries.isEmpty()) {
+            return "(no files)";
         }
+        StringBuilder sb = new StringBuilder();
+        int included = 0;
+        for (ChangeManifestBuilder.Entry e : entries) {
+            if (sb.length() + e.line().length() + 1 > MAX_SUMMARY_FILE_CHARS) {
+                break;
+            }
+            sb.append(e.line()).append("\n");
+            included++;
+        }
+        int omitted = entries.size() - included;
+        if (omitted > 0) {
+            sb.append("...and ").append(omitted).append(" more changed files\n");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Renders the findings the review actually produced, most severe first. Previously
+     * the summary model was given only a count, so its "Review Notes" and "Risk
+     * Assessment" sections were guesses. Bounded so a noisy PR cannot dominate the prompt.
+     */
+    static String formatFindingsForSummary(List<ReviewIssue> issues) {
+        if (issues == null || issues.isEmpty()) {
+            return "(none)";
+        }
+        List<ReviewIssue> ordered = issues.stream()
+            .sorted(java.util.Comparator.comparingInt(i ->
+                i.getSeverity() == null ? Integer.MAX_VALUE : i.getSeverity().ordinal()))
+            .toList();
+
+        StringBuilder sb = new StringBuilder();
+        int included = 0;
+        for (ReviewIssue issue : ordered) {
+            if (included >= MAX_SUMMARY_FINDINGS) {
+                break;
+            }
+            String line = "- " + issue.getSeverity() + " " + issue.getFilePath() + ":" + issue.getLineNumber()
+                + " [" + issue.getRule() + "] " + truncateForSummary(issue.getDescription()) + "\n";
+            if (sb.length() + line.length() > MAX_SUMMARY_FINDING_CHARS) {
+                break;
+            }
+            sb.append(line);
+            included++;
+        }
+        int omitted = ordered.size() - included;
+        if (omitted > 0) {
+            sb.append("...and ").append(omitted).append(" more findings\n");
+        }
+        return sb.toString();
+    }
+
+    static String truncateForSummary(String text) {
+        if (text == null) {
+            return "";
+        }
+        String oneLine = text.replace('\n', ' ').trim();
+        return oneLine.length() > 160 ? oneLine.substring(0, 160) + "..." : oneLine;
+    }
+
+    private String generateSummary(PullRequestInfo prInfo, List<ChangedFile> files,
+            List<ReviewIssue> issues, List<ChangeManifestBuilder.Entry> manifestEntries) {
+        String template = loadPromptTemplate("summary.txt");
 
         String prompt = template
             .replace("{{title}}", prInfo.title())
             .replace("{{description}}", prInfo.description() != null ? prInfo.description() : "")
-            .replace("{{files}}", fileList.toString())
+            .replace("{{files}}", formatFileListForSummary(manifestEntries))
+            .replace("{{findings}}", formatFindingsForSummary(issues))
             .replace("{{issue_count}}", String.valueOf(issues.size()));
 
         try {
@@ -1105,7 +1227,15 @@ public class ReviewEngine {
         return new TicketScopeValidation("Unable to validate ticket scope", null);
     }
 
-    private void parseReviewResponse(
+    /**
+     * Parses an LLM review response into issues and comments.
+     *
+     * @return true if the model's structured JSON was parsed; false if no JSON was
+     *         found or the response only survived the legacy text fallback. A false
+     *         return means the model's output for this file was unusable or degraded,
+     *         which is otherwise indistinguishable from "the file was clean".
+     */
+    private boolean parseReviewResponse(
             String response,
             String filename,
             String commitSha,
@@ -1117,8 +1247,9 @@ public class ReviewEngine {
         // Extract JSON from response (handle markdown code blocks)
         String json = extractJson(response);
         if (json == null || json.isBlank()) {
-            log.debug("No JSON found in response for {}", filename);
-            return;
+            log.warn("No JSON found in LLM response for {} ({} chars); file yields no findings",
+                filename, response == null ? 0 : response.length());
+            return false;
         }
 
         try {
@@ -1191,6 +1322,7 @@ public class ReviewEngine {
                     log.debug("Could not parse issue: {}", issueData, e);
                 }
             }
+            return true;
         } catch (Exception e) {
             log.debug("JSON parsing needs repair for {}, attempting auto-fix", filename);
             // Try to repair truncated JSON
@@ -1250,13 +1382,15 @@ public class ReviewEngine {
                             log.debug("Could not parse repaired issue: {}", issueData);
                         }
                     }
-                    return; // Successfully parsed repaired JSON
+                    return true; // Successfully parsed repaired JSON
                 } catch (Exception repairEx) {
                     log.debug("JSON repair failed for {}, falling back to text parsing: {}", filename, repairEx.getMessage());
                 }
             }
             // Fallback to simple text parsing for backwards compatibility
+            log.warn("LLM response for {} was not valid JSON; fell back to text parsing", filename);
             parseReviewResponseLegacy(response, filename, commitSha, issues, comments, ignoredLines, changedLines);
+            return false;
         }
     }
 
@@ -1576,6 +1710,7 @@ public class ReviewEngine {
                 {{files}}
 
                 Issues found: {{issue_count}}
+                {{findings}}
 
                 Provide a concise summary of what this PR does and any concerns.
                 """;
@@ -1661,8 +1796,19 @@ public class ReviewEngine {
         List<ReviewComment> comments,
         int inputTokens,
         int outputTokens,
-        double estimatedCost
-    ) {}
+        double estimatedCost,
+        /**
+         * True when the LLM call for this file threw, was truncated, or returned
+         * output the parser could not read. Such a file contributes no findings for
+         * a reason other than being clean, so it is counted and surfaced.
+         */
+        boolean degraded
+    ) {
+        FileReviewResult(List<ReviewIssue> issues, List<ReviewComment> comments,
+                int inputTokens, int outputTokens, double estimatedCost) {
+            this(issues, comments, inputTokens, outputTokens, estimatedCost, false);
+        }
+    }
 
     /**
      * Complete review result
@@ -1681,7 +1827,11 @@ public class ReviewEngine {
         String rawDiff,
         List<DiffParser.FileDiff> parsedDiffs,
         String ticketScopeResult,
-        Boolean ticketScopeAligned
+        Boolean ticketScopeAligned,
+        /** Files whose LLM output was missing, truncated or unparseable. */
+        int filesFailed,
+        /** Reviewable files dropped because the PR exceeded max-files. */
+        int filesSkipped
     ) {
         // Constructor for backwards compatibility
         public ReviewResult(
@@ -1700,7 +1850,29 @@ public class ReviewEngine {
         ) {
             this(summary, issues, comments, filesReviewed, linesAdded, linesRemoved,
                 totalInputTokens, totalOutputTokens, llmProvider, estimatedCost,
-                rawDiff, parsedDiffs, null, null);
+                rawDiff, parsedDiffs, null, null, 0, 0);
+        }
+
+        // Constructor for callers that report ticket scope but no health counters
+        public ReviewResult(
+            String summary,
+            List<ReviewIssue> issues,
+            List<ReviewComment> comments,
+            int filesReviewed,
+            int linesAdded,
+            int linesRemoved,
+            int totalInputTokens,
+            int totalOutputTokens,
+            String llmProvider,
+            double estimatedCost,
+            String rawDiff,
+            List<DiffParser.FileDiff> parsedDiffs,
+            String ticketScopeResult,
+            Boolean ticketScopeAligned
+        ) {
+            this(summary, issues, comments, filesReviewed, linesAdded, linesRemoved,
+                totalInputTokens, totalOutputTokens, llmProvider, estimatedCost,
+                rawDiff, parsedDiffs, ticketScopeResult, ticketScopeAligned, 0, 0);
         }
     }
 
@@ -1816,10 +1988,14 @@ public class ReviewEngine {
         List<GitProvider.ChangedFile> filesToReview = filterAndPrioritizeFiles(changedFiles);
         log.info("After filtering: {} files to review", filesToReview.size());
 
+        int filesSkipped = 0;
         if (filesToReview.size() > maxFiles) {
-            log.warn("Commit has {} reviewable files, limiting to {}", filesToReview.size(), maxFiles);
+            filesSkipped = filesToReview.size() - maxFiles;
+            log.warn("Commit has {} reviewable files, limiting to {} ({} not reviewed)",
+                filesToReview.size(), maxFiles, filesSkipped);
             filesToReview = filesToReview.subList(0, maxFiles);
         }
+        final int filesSkippedCount = filesSkipped;
 
         final int totalFiles = filesToReview.size();
 
@@ -1843,6 +2019,7 @@ public class ReviewEngine {
         AtomicInteger totalOutputTokens = new AtomicInteger(0);
         java.util.concurrent.atomic.DoubleAdder totalEstimatedCost = new java.util.concurrent.atomic.DoubleAdder();
         AtomicInteger filesCompleted = new AtomicInteger(0);
+        AtomicInteger filesFailed = new AtomicInteger(0);
 
         // Review files in parallel
         ExecutorService executor = Executors.newFixedThreadPool(parallelThreads);
@@ -1872,6 +2049,9 @@ public class ReviewEngine {
                             request.organizationId(), lintConfigBundle, repoRules,
                             learningContext
                         );
+                        if (fileResult.degraded()) {
+                            filesFailed.incrementAndGet();
+                        }
                         allIssues.addAll(fileResult.issues());
                         allComments.addAll(fileResult.comments());
                         totalInputTokens.addAndGet(fileResult.inputTokens());
@@ -1896,6 +2076,7 @@ public class ReviewEngine {
                             cancelled.set(true);
                         } else {
                             log.error("Error reviewing file: {}", file.filename(), e);
+                            filesFailed.incrementAndGet();
                         }
                         filesCompleted.incrementAndGet();
                     }
@@ -1935,8 +2116,8 @@ public class ReviewEngine {
             .mapToInt(GitProvider.ChangedFile::deletions).sum();
 
         long elapsed = System.currentTimeMillis() - startTime;
-        log.info("Commit review completed in {}ms for {} files with {} issues",
-            elapsed, finalFilesToReview.size(), allIssues.size());
+        log.info("Commit review completed in {}ms for {} files with {} issues ({} degraded, {} skipped over max-files)",
+            elapsed, finalFilesToReview.size(), allIssues.size(), filesFailed.get(), filesSkippedCount);
 
         if (progressCallback != null) {
             progressCallback.accept(new ProgressUpdate(totalFiles, totalFiles, "Complete", ProgressPhase.COMPLETE));
@@ -1961,7 +2142,9 @@ public class ReviewEngine {
             diff,
             parsedDiffs,
             ticketScopeValidation != null ? ticketScopeValidation.result() : null,
-            ticketScopeValidation != null ? ticketScopeValidation.aligned() : null
+            ticketScopeValidation != null ? ticketScopeValidation.aligned() : null,
+            filesFailed.get(),
+            filesSkippedCount
         );
     }
 
@@ -2055,6 +2238,9 @@ public class ReviewEngine {
         SmartContextExtractor.ExtractionResult extraction =
             smartContextExtractor.extract(file.filename(), fileContent, file.patch());
 
+        // Tracks whether the LLM produced usable output for this file (see FileReviewResult).
+        boolean degraded = false;
+
         if (extraction.mode() == SmartContextExtractor.ReviewMode.SKIP_LLM) {
             log.info("Skipping LLM review for {} ({}), static analysis only",
                 file.filename(), extraction.reason());
@@ -2067,10 +2253,12 @@ public class ReviewEngine {
                 outputTokens = response.outputTokens();
                 llmTaskType = "security";
                 // Filter to changed lines to prevent LLM hallucinations
-                parseReviewResponse(response.content(), file.filename(), request.commitSha(),
+                boolean parsed = parseReviewResponse(response.content(), file.filename(), request.commitSha(),
                     issues, comments, ignoredLines, changedLines);
+                degraded = !parsed || response.truncated();
             } catch (Exception e) {
                 log.error("Error running security scan for {}", file.filename(), e);
+                degraded = true;
             }
         } else {
             // Full AI review (no graph context for commit reviews)
@@ -2082,12 +2270,14 @@ public class ReviewEngine {
                 outputTokens = response.outputTokens();
                 llmTaskType = "review";
                 // Filter to changed lines to prevent LLM hallucinations
-                parseReviewResponse(response.content(), file.filename(), request.commitSha(),
+                boolean parsed = parseReviewResponse(response.content(), file.filename(), request.commitSha(),
                     issues, comments, ignoredLines, changedLines);
+                degraded = !parsed || response.truncated();
                 log.debug("LLM review for {} used {} input, {} output tokens",
                     file.filename(), inputTokens, outputTokens);
             } catch (Exception e) {
                 log.error("Error getting LLM review for {}", file.filename(), e);
+                degraded = true;
             }
         }
 
@@ -2133,7 +2323,7 @@ public class ReviewEngine {
             }
         }
 
-        return new FileReviewResult(issues, comments, inputTokens, outputTokens, fileCost);
+        return new FileReviewResult(issues, comments, inputTokens, outputTokens, fileCost, degraded);
     }
 
     /**
@@ -2142,18 +2332,16 @@ public class ReviewEngine {
     private String generateCommitSummary(GitProvider.CommitInfo commitInfo, List<GitProvider.ChangedFile> files, List<ReviewIssue> issues) {
         String template = loadPromptTemplate("summary.txt");
 
-        StringBuilder fileList = new StringBuilder();
-        for (GitProvider.ChangedFile file : files) {
-            fileList.append("- ").append(file.filename())
-                .append(" (+").append(file.additions())
-                .append("/-").append(file.deletions()).append(")\n");
-        }
+        List<ChangeManifestBuilder.Entry> entries = files.stream()
+            .map(f -> ChangeManifestBuilder.buildEntry(f.filename(), f.additions(), f.deletions(), f.patch()))
+            .toList();
 
         String commitTitle = commitInfo.message().split("\n")[0];
         String prompt = template
             .replace("{{title}}", commitTitle)
             .replace("{{description}}", commitInfo.message())
-            .replace("{{files}}", fileList.toString())
+            .replace("{{files}}", formatFileListForSummary(entries))
+            .replace("{{findings}}", formatFindingsForSummary(issues))
             .replace("{{issue_count}}", String.valueOf(issues.size()));
 
         try {

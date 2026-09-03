@@ -34,13 +34,24 @@ public interface LlmProvider {
     double estimateCost(int inputTokens, int outputTokens);
 
     /**
-     * Response from LLM provider
+     * Response from LLM provider.
+     *
+     * <p>{@code truncated} is true when the model stopped because it hit the output
+     * token ceiling rather than finishing its answer. Truncated responses are the
+     * dominant cause of unparseable review JSON, so callers should treat a truncated
+     * response as a degraded result rather than an empty one.
      */
     record LlmResponse(
         String content,
         int inputTokens,
-        int outputTokens
+        int outputTokens,
+        boolean truncated
     ) {
+        /** Convenience constructor for providers that cannot report a finish reason. */
+        public LlmResponse(String content, int inputTokens, int outputTokens) {
+            this(content, inputTokens, outputTokens, false);
+        }
+
         public double estimatedCost(LlmProvider provider) {
             return provider.estimateCost(inputTokens, outputTokens);
         }

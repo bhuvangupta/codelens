@@ -417,7 +417,9 @@ public class ReviewService implements ReviewExecutor {
             result.ticketScopeAligned(),
             result.llmProvider(),
             result.estimatedCost(),
-            result.rawDiff()
+            result.rawDiff(),
+            result.filesFailed(),
+            result.filesSkipped()
         );
 
         // Re-fetch the review entity for associating child entities
@@ -1087,7 +1089,9 @@ public class ReviewService implements ReviewExecutor {
             result.ticketScopeAligned(),
             result.llmProvider(),
             result.estimatedCost(),
-            result.rawDiff()
+            result.rawDiff(),
+            result.filesFailed(),
+            result.filesSkipped()
         );
 
         // Re-fetch the review entity for associating child entities
