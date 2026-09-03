@@ -648,6 +648,8 @@ public class ReviewEngine {
         boolean degraded = false;
         int cachedTokens = 0;
         int thinkingTokens = 0;
+        // Hoisted so the verification pass can be shown exactly what the reviewer saw.
+        String graphContextBlock = null;
 
         if (extraction.mode() == SmartContextExtractor.ReviewMode.SKIP_LLM) {
             log.info("Skipping LLM review for {} ({}), static analysis only",
@@ -684,7 +686,6 @@ public class ReviewEngine {
             }
         } else {
             // Enrich with code intelligence graph context if available
-            String graphContextBlock = null;
             if (intelligenceEnabled && codeIntelligenceService != null && request.repositoryId() != null) {
                 try {
                     GraphContext graphCtx = codeIntelligenceService.enrichFile(request.repositoryId(), file.filename());
@@ -733,8 +734,14 @@ public class ReviewEngine {
         // Second-pass verification of AI findings (fail-open; linter findings bypass this)
         if (verificationEnabled && !issues.isEmpty()) {
             String redactedPatch = secretRedactor.redactSecrets(file.patch());
+            // Same evidence the reviewer had. Without it the verifier was told to refute
+            // anything relying on "code defined elsewhere" while being denied any view of
+            // elsewhere, which made correct cross-file findings refutable by construction.
+            String redactedContext = extraction.context() == null
+                ? null : secretRedactor.redactSecrets(extraction.context());
             VerificationService.VerificationOutcome outcome =
-                verificationService.verify(file.filename(), redactedPatch, issues);
+                verificationService.verify(file.filename(), redactedPatch,
+                    redactedContext, graphContextBlock, issues);
             for (VerificationService.Decision d : outcome.decisions().dropped()) {
                 issues.remove(d.issue());
                 ReviewComment match = findMatchingComment(comments, d.issue());
