@@ -1,14 +1,15 @@
 package com.codelens.llm.providers;
 
-import dev.langchain4j.model.chat.ChatModel;
-import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+/**
+ * Gemini Pro tier: higher quality, slower and more expensive than Flash.
+ */
 @Slf4j
 @Component
-public class GeminiProProvider extends AbstractLlmProvider {
+public class GeminiProProvider extends AbstractGeminiProvider {
 
     @Value("${codelens.llm.providers.gemini-pro.enabled:true}")
     private boolean enabled;
@@ -18,6 +19,16 @@ public class GeminiProProvider extends AbstractLlmProvider {
 
     @Value("${codelens.llm.providers.gemini-pro.model:gemini-2.5-pro}")
     private String model;
+
+    @Value("${codelens.llm.providers.gemini-pro.max-output-tokens:8192}")
+    private Integer maxOutputTokens;
+
+    /** Lower temperature for more precise security analysis. */
+    @Value("${codelens.llm.providers.gemini-pro.temperature:0.2}")
+    private Double temperature;
+
+    @Value("${codelens.llm.providers.gemini-pro.structured-output:true}")
+    private boolean structuredOutputEnabled;
 
     @Override
     public String getName() {
@@ -35,17 +46,13 @@ public class GeminiProProvider extends AbstractLlmProvider {
     }
 
     @Override
-    protected ChatModel createChatModel() {
-        if (!isEnabled()) {
-            throw new IllegalStateException("Gemini Pro provider is not enabled or API key is missing");
-        }
+    protected boolean supportsStructuredOutput() {
+        return structuredOutputEnabled;
+    }
 
-        return GoogleAiGeminiChatModel.builder()
-            .apiKey(apiKey)
-            .modelName(model)
-            .temperature(0.2)  // Lower temperature for more precise security analysis
-            .maxOutputTokens(8192)  // Higher output for detailed security reports
-            .build();
+    @Override
+    protected GeminiSettings settings() {
+        return new GeminiSettings(apiKey, model, temperature, maxOutputTokens, null);
     }
 
     @Override

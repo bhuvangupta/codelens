@@ -1,21 +1,16 @@
 package com.codelens.llm.providers;
 
-import com.codelens.llm.LlmProvider;
-import com.codelens.llm.ReviewIssueSchema;
-import dev.langchain4j.model.chat.ChatModel;
-import dev.langchain4j.model.chat.request.ResponseFormat;
-import dev.langchain4j.model.googleai.GeminiHarmBlockThreshold;
-import dev.langchain4j.model.googleai.GeminiHarmCategory;
-import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.util.Map;
-
+/**
+ * Default review tier. Runs at the model's own reasoning effort, which for Gemini 3.x is
+ * the balanced default.
+ */
 @Slf4j
 @Component
-public class GeminiProvider extends AbstractLlmProvider {
+public class GeminiProvider extends AbstractGeminiProvider {
 
     @Value("${codelens.llm.providers.gemini.enabled:true}")
     private boolean enabled;
@@ -58,43 +53,20 @@ public class GeminiProvider extends AbstractLlmProvider {
         return model;
     }
 
-    /**
-     * Gemini supports native JSON-schema output, so the review contract is enforced
-     * rather than merely requested in prose. Applied per request, so free-text tasks
-     * on this same provider (the PR summary, ticket scope) are unaffected.
-     */
-    @Override
-    protected ResponseFormat responseFormatFor(LlmProvider.ResponseShape shape) {
-        if (!structuredOutputEnabled || shape != LlmProvider.ResponseShape.REVIEW_ISSUES) {
-            return null;
-        }
-        return ReviewIssueSchema.responseFormat();
-    }
-
     @Override
     public boolean isEnabled() {
         return enabled && apiKey != null && !apiKey.isEmpty();
     }
 
     @Override
-    protected ChatModel createChatModel() {
-        if (!isEnabled()) {
-            throw new IllegalStateException("Gemini provider is not enabled or API key is missing");
-        }
+    protected boolean supportsStructuredOutput() {
+        return structuredOutputEnabled;
+    }
 
-        return GoogleAiGeminiChatModel.builder()
-            .apiKey(apiKey)
-            .modelName(model)
-            .temperature(temperature)
-            .maxOutputTokens(maxOutputTokens)
-            // Code review legitimately analyses SQL injection, weak crypto and exploit
-            // code. The default DANGEROUS_CONTENT filter can block those diffs outright,
-            // which surfaces as an empty review. Other categories stay at API defaults.
-            .safetySettings(Map.of(
-                GeminiHarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                GeminiHarmBlockThreshold.BLOCK_ONLY_HIGH
-            ))
-            .build();
+    @Override
+    protected GeminiSettings settings() {
+        // No thinking config: the model applies its own default reasoning effort.
+        return new GeminiSettings(apiKey, model, temperature, maxOutputTokens, null);
     }
 
     @Override
