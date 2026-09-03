@@ -2,6 +2,9 @@ package com.codelens.llm.providers;
 
 import com.codelens.llm.LlmProvider;
 import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.request.ResponseFormat;
+import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -36,8 +39,21 @@ public abstract class AbstractLlmProvider implements LlmProvider {
         return chat(List.of(Map.of("role", "user", "content", prompt)));
     }
 
+    /**
+     * Native response format for a requested shape, or null when this provider cannot
+     * enforce it. Subclasses that support structured output override this.
+     */
+    protected ResponseFormat responseFormatFor(LlmProvider.ResponseShape shape) {
+        return null;
+    }
+
     @Override
     public LlmResponse chat(List<Map<String, String>> messages) {
+        return chat(messages, ResponseShape.FREE_TEXT);
+    }
+
+    @Override
+    public LlmResponse chat(List<Map<String, String>> messages, ResponseShape shape) {
         try {
             List<ChatMessage> chatMessages = new ArrayList<>();
 
@@ -54,7 +70,24 @@ public abstract class AbstractLlmProvider implements LlmProvider {
                 }
             }
 
-            Response<AiMessage> response = getChatModel().generate(chatMessages);
+            // Only take the structured-output path when this provider can actually
+            // enforce the shape. Everything else stays on the long-proven legacy call,
+            // and the response format is attached per request so that one shared model
+            // instance can still serve free-text tasks such as the PR summary.
+            ResponseFormat responseFormat =
+                shape == null || shape == ResponseShape.FREE_TEXT ? null : responseFormatFor(shape);
+
+            Response<AiMessage> response;
+            if (responseFormat != null) {
+                ChatResponse chatResponse = getChatModel().chat(ChatRequest.builder()
+                    .messages(chatMessages)
+                    .responseFormat(responseFormat)
+                    .build());
+                response = Response.from(
+                    chatResponse.aiMessage(), chatResponse.tokenUsage(), chatResponse.finishReason());
+            } else {
+                response = getChatModel().generate(chatMessages);
+            }
 
             // Get token counts
             int inputTokens = 0;

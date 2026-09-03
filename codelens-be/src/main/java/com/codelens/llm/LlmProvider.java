@@ -29,6 +29,30 @@ public interface LlmProvider {
     LlmResponse chat(List<Map<String, String>> messages);
 
     /**
+     * Chat with message history, asking the provider to enforce a response shape.
+     *
+     * <p>Providers that cannot enforce structure ignore the shape and answer as usual,
+     * so callers always get a response and the prose instructions in the prompt remain
+     * the contract of last resort.
+     */
+    default LlmResponse chat(List<Map<String, String>> messages, ResponseShape shape) {
+        return chat(messages);
+    }
+
+    /**
+     * Response shapes a caller can ask a provider to enforce natively.
+     *
+     * <p>Kept as a small named set rather than a schema object so that providers which
+     * do not use LangChain4j (GLM) are not forced to depend on its types.
+     */
+    enum ResponseShape {
+        /** Whatever the prompt asks for; no machine-enforced structure. */
+        FREE_TEXT,
+        /** The review-issue array shared by the review and security-scan prompts. */
+        REVIEW_ISSUES
+    }
+
+    /**
      * Estimate cost for given token counts (in USD)
      */
     double estimateCost(int inputTokens, int outputTokens);

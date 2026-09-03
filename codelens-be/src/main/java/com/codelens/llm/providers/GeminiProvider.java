@@ -1,6 +1,9 @@
 package com.codelens.llm.providers;
 
+import com.codelens.llm.LlmProvider;
+import com.codelens.llm.ReviewIssueSchema;
 import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.request.ResponseFormat;
 import dev.langchain4j.model.googleai.GeminiHarmBlockThreshold;
 import dev.langchain4j.model.googleai.GeminiHarmCategory;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
@@ -38,6 +41,13 @@ public class GeminiProvider extends AbstractLlmProvider {
     @Value("${codelens.llm.providers.gemini.temperature:#{null}}")
     private Double temperature;
 
+    /**
+     * Escape hatch. Native schema enforcement replaces fence-scraping for review calls;
+     * turn it off to fall back to prompt-only instructions plus {@code extractJson}.
+     */
+    @Value("${codelens.llm.providers.gemini.structured-output:true}")
+    private boolean structuredOutputEnabled;
+
     @Override
     public String getName() {
         return "gemini";
@@ -46,6 +56,19 @@ public class GeminiProvider extends AbstractLlmProvider {
     @Override
     protected String modelName() {
         return model;
+    }
+
+    /**
+     * Gemini supports native JSON-schema output, so the review contract is enforced
+     * rather than merely requested in prose. Applied per request, so free-text tasks
+     * on this same provider (the PR summary, ticket scope) are unaffected.
+     */
+    @Override
+    protected ResponseFormat responseFormatFor(LlmProvider.ResponseShape shape) {
+        if (!structuredOutputEnabled || shape != LlmProvider.ResponseShape.REVIEW_ISSUES) {
+            return null;
+        }
+        return ReviewIssueSchema.responseFormat();
     }
 
     @Override

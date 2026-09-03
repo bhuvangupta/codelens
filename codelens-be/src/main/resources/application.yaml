@@ -124,6 +124,9 @@ codelens:
         # but 16384 is ample for the "max 5-7 issues" response the prompts request.
         max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:16384}
         # temperature intentionally unset: Gemini 3.x uses its own default when omitted.
+        # Native JSON-schema enforcement for review responses (replaces fence scraping).
+        # Applied per request, so free-text tasks like the PR summary are unaffected.
+        structured-output: ${GEMINI_STRUCTURED_OUTPUT:true}
 
       gemini-pro:
         # Google Pro - higher quality, slower

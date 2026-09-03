@@ -54,9 +54,9 @@ Perform a thorough security analysis of the ADDED/CHANGED lines:
 
 For each issue, explain WHY it is a security risk and provide a concrete fix.
 
-Return ONLY a JSON array of issues found. If no issues, return [].
+**CRITICAL: Your response must be ONLY a valid JSON array. No markdown, no explanation, no text before or after.**
 
-```json
+Format:
 [
   {
     "line": <line_number_in_diff>,
@@ -68,6 +68,9 @@ Return ONLY a JSON array of issues found. If no issues, return [].
     "confidence": "HIGH|MEDIUM|LOW"
   }
 ]
-```
+
+Return `[]` if no issues found.
+
+**DO NOT wrap in markdown code blocks. DO NOT add any text. Start directly with `[` and end with `]`.**
 
 CRITICAL: Only report issues you are confident about. Do not flag environment variable references like ${SECRET} or {{SECRET}} as hardcoded secrets.

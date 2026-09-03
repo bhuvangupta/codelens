@@ -273,7 +273,7 @@ Maximum 7 issues, prioritized by severity. Format:
   {
     "line": 42,
     "severity": "CRITICAL|HIGH|MEDIUM|LOW",
-    "category": "SECURITY|BUG|PERFORMANCE|REACT|ASYNC",
+    "category": "SECURITY|BUG|LOGIC|PERFORMANCE|SMELL",
     "rule": "xss|sql-injection|hooks-violation|memory-leak|etc",
     "message": "Brief problem statement and production impact",
     "existing_code": "problematic code snippet",
@@ -285,6 +285,9 @@ Maximum 7 issues, prioritized by severity. Format:
 **Message rules:**
 - Maximum 1-2 sentences per message. State the problem and the fix.
 - No preamble, no "consider", no "it would be better". Be direct.
+
+Framework specificity belongs in `rule`, never in `category`. A React hooks or async
+defect is category BUG, with rule `hooks-violation`, `unhandled-rejection`, and so on.
 
 Return `[]` if no issues found.
 

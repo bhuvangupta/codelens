@@ -646,7 +646,8 @@ public class ReviewEngine {
             String securityPrompt = buildSecurityScanPrompt(file.filename(), file.patch());
             try {
                 // Use fallback-enabled generation for reliability
-                LlmProvider.LlmResponse response = llmRouter.generate(securityPrompt, "security");
+                LlmProvider.LlmResponse response = llmRouter.generate(
+                    securityPrompt, "security", LlmProvider.ResponseShape.REVIEW_ISSUES);
 
                 inputTokens = response.inputTokens();
                 outputTokens = response.outputTokens();
@@ -686,7 +687,8 @@ public class ReviewEngine {
                 customRepoRules, learningContext.activeHints(), graphContextBlock, manifestBlock);
             try {
                 // Use fallback-enabled generation for reliability
-                LlmProvider.LlmResponse response = llmRouter.generate(prompt, "review");
+                LlmProvider.LlmResponse response = llmRouter.generate(
+                    prompt, "review", LlmProvider.ResponseShape.REVIEW_ISSUES);
 
                 inputTokens = response.inputTokens();
                 outputTokens = response.outputTokens();
@@ -2248,7 +2250,8 @@ public class ReviewEngine {
             log.info("Running security scan for config file: {}", file.filename());
             String securityPrompt = buildSecurityScanPrompt(file.filename(), file.patch());
             try {
-                LlmProvider.LlmResponse response = llmRouter.generate(securityPrompt, "security");
+                LlmProvider.LlmResponse response = llmRouter.generate(
+                    securityPrompt, "security", LlmProvider.ResponseShape.REVIEW_ISSUES);
                 inputTokens = response.inputTokens();
                 outputTokens = response.outputTokens();
                 llmTaskType = "security";
@@ -2265,7 +2268,8 @@ public class ReviewEngine {
             String prompt = buildReviewPrompt(file.filename(), file.patch(), fileContent,
                 customRepoRules, learningContext.activeHints(), null, "");
             try {
-                LlmProvider.LlmResponse response = llmRouter.generate(prompt, "review");
+                LlmProvider.LlmResponse response = llmRouter.generate(
+                    prompt, "review", LlmProvider.ResponseShape.REVIEW_ISSUES);
                 inputTokens = response.inputTokens();
                 outputTokens = response.outputTokens();
                 llmTaskType = "review";

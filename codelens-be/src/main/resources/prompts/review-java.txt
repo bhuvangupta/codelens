@@ -293,7 +293,7 @@ Maximum 7 issues, prioritized by severity. Format:
   {
     "line": 42,
     "severity": "CRITICAL|HIGH|MEDIUM|LOW",
-    "category": "SECURITY|BUG|PERFORMANCE|SPRING|JPA",
+    "category": "SECURITY|BUG|LOGIC|PERFORMANCE|SMELL",
     "rule": "sql-injection|n-plus-one|transactional-private|etc",
     "message": "Brief problem statement and production impact",
     "existing_code": "problematic code snippet",
@@ -305,6 +305,10 @@ Maximum 7 issues, prioritized by severity. Format:
 **Message rules:**
 - Maximum 1-2 sentences. State what's wrong and the production impact.
 - No preamble. Be direct. Example: "N+1 query — `getCustomer()` fires per iteration. Use JOIN FETCH."
+
+Framework specificity belongs in `rule`, never in `category`. A Spring or JPA defect
+is category BUG (or PERFORMANCE for an N+1), with rule `transactional-private`,
+`n-plus-one`, and so on.
 
 Return `[]` if no issues found.
 

@@ -64,9 +64,15 @@ public class LlmRouter {
      * Tries: preferred provider → default provider → fallback provider
      */
     public FallbackResult generateWithFallback(String prompt, TaskType taskType) {
+        return generateWithFallback(prompt, taskType, LlmProvider.ResponseShape.FREE_TEXT);
+    }
+
+    public FallbackResult generateWithFallback(String prompt, TaskType taskType,
+            LlmProvider.ResponseShape shape) {
         return generateWithFallback(
                 List.of(Map.of("role", "user", "content", prompt)),
-                taskType
+                taskType,
+                shape
         );
     }
 
@@ -76,6 +82,16 @@ public class LlmRouter {
      * @throws LlmCostService.DailyQuotaExceededException if daily quota is exceeded
      */
     public FallbackResult generateWithFallback(List<Map<String, String>> messages, TaskType taskType) {
+        return generateWithFallback(messages, taskType, LlmProvider.ResponseShape.FREE_TEXT);
+    }
+
+    /**
+     * Chat with automatic fallback, asking each provider to enforce {@code shape}.
+     * Providers that cannot enforce it answer normally, so the fallback chain is
+     * unaffected by a provider's structured-output support.
+     */
+    public FallbackResult generateWithFallback(List<Map<String, String>> messages, TaskType taskType,
+            LlmProvider.ResponseShape shape) {
         // Check daily quota before making LLM call
         costService.checkQuotaOrThrow();
 
@@ -100,7 +116,7 @@ public class LlmRouter {
 
             try {
                 log.debug("Attempting LLM call with provider: {} (attempt {})", providerName, attempt);
-                LlmProvider.LlmResponse response = provider.chat(messages);
+                LlmProvider.LlmResponse response = provider.chat(messages, shape);
 
                 if (attempt > 1) {
                     log.info("LLM call succeeded with fallback provider: {} after {} attempts. Failed: {}",
@@ -164,6 +180,14 @@ public class LlmRouter {
      * Use this for straightforward LLM calls where you don't need provider details.
      */
     public LlmProvider.LlmResponse generate(String prompt, String taskName) {
+        return generate(prompt, taskName, LlmProvider.ResponseShape.FREE_TEXT);
+    }
+
+    /**
+     * Generate with fallback, asking for a native response shape where supported.
+     */
+    public LlmProvider.LlmResponse generate(String prompt, String taskName,
+            LlmProvider.ResponseShape shape) {
         TaskType taskType = switch (taskName.toLowerCase()) {
             case "summary" -> TaskType.SUMMARY;
             case "describe" -> TaskType.DESCRIBE;
@@ -173,7 +197,7 @@ public class LlmRouter {
             case "verification" -> TaskType.VERIFICATION;
             default -> TaskType.REVIEW;
         };
-        return generateWithFallback(prompt, taskType).response();
+        return generateWithFallback(prompt, taskType, shape).response();
     }
 
     /**
