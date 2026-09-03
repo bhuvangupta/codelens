@@ -50,11 +50,12 @@ class GeminiThinkingProviderTest {
         }
 
         @Test
-        void runsAtHighReasoningEffortByDefault() {
+        void runsAtBalancedReasoningEffortByDefault() {
             GeminiThinkingConfig config = thinking.settings().thinking();
-            assertNotNull(config, "the thinking tier must attach a reasoning config");
-            assertEquals("high", config.thinkingLevel(),
-                "the API expects the lowercase form; an uppercase value would be rejected");
+            assertNotNull(config, "the tier must attach an explicit reasoning config");
+            assertEquals("medium", config.thinkingLevel(),
+                "MEDIUM is the balanced default; the API also expects the lowercase form, "
+                    + "so an uppercase value would be rejected");
         }
 
         @Test
@@ -100,13 +101,30 @@ class GeminiThinkingProviderTest {
         @Autowired GeminiThinkingProvider thinking;
 
         @Test
-        void effortCanBeLoweredWithoutChangingRouting() {
+        void effortCanBeChangedWithoutTouchingRouting() {
             assertEquals("low", thinking.settings().thinking().thinkingLevel());
         }
 
         @Test
         void modelCanBePinnedIndependently() {
             assertEquals("gemini-3.7-flash", thinking.settings().model());
+        }
+    }
+
+    @Nested
+    @SpringJUnitConfig(TestConfig.class)
+    @TestPropertySource(properties = {
+        "codelens.llm.providers.gemini.api-key=test-key",
+        "codelens.llm.providers.gemini-thinking.thinking-level=HIGH"
+    })
+    class RaisedEffort {
+
+        @Autowired GeminiThinkingProvider thinking;
+
+        @Test
+        void deeperReasoningRemainsAvailableByConfiguration() {
+            assertEquals("high", thinking.settings().thinking().thinkingLevel(),
+                "MEDIUM is only the default; HIGH must still be reachable without code changes");
         }
     }
 
@@ -126,10 +144,10 @@ class GeminiThinkingProviderTest {
         }
 
         @Test
-        void fallsBackToHighWhenUnset() {
-            assertEquals(GeminiThinkingConfig.GeminiThinkingLevel.HIGH,
+        void fallsBackToTheBalancedLevelWhenUnset() {
+            assertEquals(GeminiThinkingConfig.GeminiThinkingLevel.MEDIUM,
                 GeminiThinkingProvider.parseThinkingLevel(null));
-            assertEquals(GeminiThinkingConfig.GeminiThinkingLevel.HIGH,
+            assertEquals(GeminiThinkingConfig.GeminiThinkingLevel.MEDIUM,
                 GeminiThinkingProvider.parseThinkingLevel("  "));
         }
 

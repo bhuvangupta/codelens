@@ -94,7 +94,7 @@ codelens:
     # claude-opus   | claude-opus-4-6 (premium security analysis)
     # gemini        | gemini-3.8-flash, gemini-3.7-flash, gemini-2.5-flash
     # gemini-pro    | gemini-2.5-pro, gemini-1.5-pro (higher quality, slower)
-# gemini-thinking | gemini-3.8-flash at HIGH reasoning effort (security analysis)
+# gemini-thinking | gemini-3.8-flash with pinned reasoning effort (security analysis)
     # openai        | gpt-4o, gpt-4o-mini, gpt-4-turbo, o1, o1-mini
     # glm           | glm-4, glm-4-flash (ZhipuAI)
     # =====================================================================
@@ -137,14 +137,14 @@ codelens:
         api-key: ${GOOGLE_API_KEY:}
 
       gemini-thinking:
-        # Same Flash model as `gemini`, run at high reasoning effort. Used for security
-        # analysis, where depth matters more than latency. Reasoning tokens are billed as
-        # output, so this costs more than `gemini` despite the identical per-token rate.
+        # Same Flash model as `gemini`, with reasoning effort pinned explicitly so it can
+        # be tuned independently of the review tier. Used for security analysis.
         # Inherits model and API key from the `gemini` provider unless overridden.
         enabled: true
         api-key: ${GOOGLE_API_KEY:}
-        # MINIMAL | LOW | MEDIUM | HIGH
-        thinking-level: ${GEMINI_THINKING_LEVEL:HIGH}
+        # MINIMAL | LOW | MEDIUM | HIGH. Reasoning tokens are billed as output and this
+        # runs per file, so raising the level costs real money and latency on every scan.
+        thinking-level: ${GEMINI_THINKING_LEVEL:MEDIUM}
         max-output-tokens: ${GEMINI_THINKING_MAX_OUTPUT_TOKENS:32768}
 
       openai:
@@ -174,7 +174,7 @@ codelens:
     routing:
       summary: ${LLM_DEFAULT_PROVIDER:ollama}   # Fast model for PR summaries
       review: ${LLM_DEFAULT_PROVIDER:ollama}    # Default model for code review
-      # Security analysis. Defaults to Gemini at high reasoning effort; set
+      # Security analysis. Defaults to the Gemini reasoning tier; set
       # LLM_SECURITY_PROVIDER=claude-opus to go back to Opus 4.6.
       security: ${LLM_SECURITY_PROVIDER:gemini-thinking}
       verification: ${LLM_VERIFICATION_PROVIDER:${LLM_DEFAULT_PROVIDER:ollama}}  # Verify AI findings (defaults to review model)

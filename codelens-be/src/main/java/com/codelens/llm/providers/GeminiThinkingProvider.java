@@ -6,17 +6,18 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * High-reasoning Gemini tier, for tasks where depth beats latency: security scans and
- * anything else routed to it explicitly.
+ * Gemini tier with an explicitly pinned reasoning effort, used for security scans.
  *
  * <p>Expressed as its own provider bean rather than as a per-call option, because the
  * codebase already selects capability tiers by provider name in {@code routing}
  * ({@code gemini} / {@code gemini-pro}, {@code claude} / {@code claude-opus}). Reusing
  * that mechanism means no change to the provider interface and no new configuration
- * concept: point a task at this bean and it gets more reasoning effort.
+ * concept: point a task at this bean and its reasoning effort becomes tunable on its own.
  *
- * <p>Reasoning tokens are billed as output, so this tier is not free. Its real cost is
- * visible through the thinking-token counter rather than being buried in the output total.
+ * <p>The level is MEDIUM by default, the balanced setting. Reasoning tokens are billed as
+ * output, so raising it is a real cost and latency decision rather than a free upgrade —
+ * and security scanning sits on the per-file path, where that cost multiplies. Raise it
+ * deliberately, with the thinking-token counter to show what it actually cost.
  */
 @Slf4j
 @Component
@@ -31,7 +32,7 @@ public class GeminiThinkingProvider extends AbstractGeminiProvider {
     @Value("${codelens.llm.providers.gemini-thinking.model:${codelens.llm.providers.gemini.model:gemini-3.8-flash}}")
     private String model;
 
-    /** Deeper reasoning produces longer answers, so the ceiling is higher than the review tier. */
+    /** Reasoning answers run longer, so the ceiling is higher than the review tier. */
     @Value("${codelens.llm.providers.gemini-thinking.max-output-tokens:32768}")
     private Integer maxOutputTokens;
 
@@ -39,10 +40,10 @@ public class GeminiThinkingProvider extends AbstractGeminiProvider {
     private Double temperature;
 
     /**
-     * MINIMAL, LOW, MEDIUM or HIGH. HIGH is the point of this bean; lower it to trade
-     * depth for latency and cost without changing any routing.
+     * MINIMAL, LOW, MEDIUM or HIGH. MEDIUM is the balanced default; raise it to trade
+     * latency and cost for depth without changing any routing.
      */
-    @Value("${codelens.llm.providers.gemini-thinking.thinking-level:HIGH}")
+    @Value("${codelens.llm.providers.gemini-thinking.thinking-level:MEDIUM}")
     private String thinkingLevel;
 
     @Value("${codelens.llm.providers.gemini-thinking.structured-output:true}")
@@ -83,7 +84,7 @@ public class GeminiThinkingProvider extends AbstractGeminiProvider {
     /** Fails fast with an actionable message rather than at the first API call. */
     static GeminiThinkingConfig.GeminiThinkingLevel parseThinkingLevel(String configured) {
         if (configured == null || configured.isBlank()) {
-            return GeminiThinkingConfig.GeminiThinkingLevel.HIGH;
+            return GeminiThinkingConfig.GeminiThinkingLevel.MEDIUM;
         }
         try {
             return GeminiThinkingConfig.GeminiThinkingLevel.valueOf(
