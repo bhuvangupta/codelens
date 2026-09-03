@@ -1,7 +1,7 @@
 package com.codelens.llm.providers;
 
 import com.codelens.llm.LlmProvider;
-import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.request.ResponseFormat;
 import dev.langchain4j.model.chat.response.ChatResponse;
@@ -10,7 +10,6 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.model.output.FinishReason;
-import dev.langchain4j.model.output.Response;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -23,11 +22,11 @@ import java.util.Map;
 @Slf4j
 public abstract class AbstractLlmProvider implements LlmProvider {
 
-    protected abstract ChatLanguageModel createChatModel();
+    protected abstract ChatModel createChatModel();
 
-    private ChatLanguageModel chatModel;
+    private ChatModel chatModel;
 
-    protected ChatLanguageModel getChatModel() {
+    protected ChatModel getChatModel() {
         if (chatModel == null) {
             chatModel = createChatModel();
         }
@@ -70,24 +69,17 @@ public abstract class AbstractLlmProvider implements LlmProvider {
                 }
             }
 
-            // Only take the structured-output path when this provider can actually
-            // enforce the shape. Everything else stays on the long-proven legacy call,
-            // and the response format is attached per request so that one shared model
-            // instance can still serve free-text tasks such as the PR summary.
+            // The response format is attached per request, not baked into the model, so
+            // one shared model instance can serve both the schema-enforced review calls
+            // and free-text tasks such as the PR summary.
             ResponseFormat responseFormat =
                 shape == null || shape == ResponseShape.FREE_TEXT ? null : responseFormatFor(shape);
 
-            Response<AiMessage> response;
+            ChatRequest.Builder requestBuilder = ChatRequest.builder().messages(chatMessages);
             if (responseFormat != null) {
-                ChatResponse chatResponse = getChatModel().chat(ChatRequest.builder()
-                    .messages(chatMessages)
-                    .responseFormat(responseFormat)
-                    .build());
-                response = Response.from(
-                    chatResponse.aiMessage(), chatResponse.tokenUsage(), chatResponse.finishReason());
-            } else {
-                response = getChatModel().generate(chatMessages);
+                requestBuilder.responseFormat(responseFormat);
             }
+            ChatResponse response = getChatModel().chat(requestBuilder.build());
 
             // Get token counts
             int inputTokens = 0;
@@ -99,7 +91,7 @@ public abstract class AbstractLlmProvider implements LlmProvider {
             } else {
                 // Estimate if not provided
                 inputTokens = estimateTokens(messages);
-                outputTokens = estimateTokens(response.content().text());
+                outputTokens = estimateTokens(response.aiMessage().text());
             }
 
             // A truncated or filtered completion is the usual cause of unparseable
@@ -115,11 +107,20 @@ public abstract class AbstractLlmProvider implements LlmProvider {
                     getName(), modelName());
             }
 
+            int cachedTokens = ProviderTokenUsage.cachedTokens(response.tokenUsage());
+            int thinkingTokens = ProviderTokenUsage.thinkingTokens(response.tokenUsage());
+            if (cachedTokens > 0 || thinkingTokens > 0) {
+                log.debug("Provider {} ({}): {} cached input tokens, {} thinking tokens",
+                    getName(), modelName(), cachedTokens, thinkingTokens);
+            }
+
             return new LlmResponse(
-                response.content().text(),
+                response.aiMessage().text(),
                 inputTokens,
                 outputTokens,
-                truncated
+                truncated,
+                cachedTokens,
+                thinkingTokens
             );
 
         } catch (Exception e) {

@@ -69,11 +69,24 @@ public interface LlmProvider {
         String content,
         int inputTokens,
         int outputTokens,
-        boolean truncated
+        boolean truncated,
+        /** Input tokens served from a prompt cache. 0 when unreported. */
+        int cachedTokens,
+        /** Reasoning tokens, billed as output. 0 when unreported. */
+        int thinkingTokens
     ) {
         /** Convenience constructor for providers that cannot report a finish reason. */
         public LlmResponse(String content, int inputTokens, int outputTokens) {
             this(content, inputTokens, outputTokens, false);
+        }
+
+        public LlmResponse(String content, int inputTokens, int outputTokens, boolean truncated) {
+            this(content, inputTokens, outputTokens, truncated, 0, 0);
+        }
+
+        /** Fraction of input served from cache, 0.0 to 1.0. */
+        public double cacheHitRatio() {
+            return inputTokens <= 0 ? 0.0 : (double) cachedTokens / inputTokens;
         }
 
         public double estimatedCost(LlmProvider provider) {

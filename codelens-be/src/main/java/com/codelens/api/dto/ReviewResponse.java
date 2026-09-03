@@ -34,6 +34,9 @@ public record ReviewResponse(
     // Review health: files that yielded nothing for a reason other than being clean
     Integer filesFailedCount,
     Integer filesSkippedCount,
+    // Token breakdown: cached input (prefix cache hits) and reasoning tokens
+    Integer cachedTokens,
+    Integer thinkingTokens,
     LocalDateTime createdAt,
     LocalDateTime completedAt,
     // Ticket scope validation
@@ -70,6 +73,8 @@ public record ReviewResponse(
             review.getEstimatedCost(),
             review.getFilesFailedCount(),
             review.getFilesSkippedCount(),
+            review.getCachedTokens(),
+            review.getThinkingTokens(),
             review.getCreatedAt(),
             review.getCompletedAt(),
             review.getTicketContent(),
@@ -107,6 +112,8 @@ public record ReviewResponse(
             review.getEstimatedCost(),
             review.getFilesFailedCount(),
             review.getFilesSkippedCount(),
+            review.getCachedTokens(),
+            review.getThinkingTokens(),
             review.getCreatedAt(),
             review.getCompletedAt(),
             review.getTicketContent(),

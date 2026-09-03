@@ -259,7 +259,8 @@ public class ReviewProgressService {
             int inputTokens, int outputTokens,
             String ticketScopeResult, Boolean ticketScopeAligned,
             String llmProvider, Double estimatedCost, String rawDiff,
-            int filesFailedCount, int filesSkippedCount) {
+            int filesFailedCount, int filesSkippedCount,
+            int cachedTokens, int thinkingTokens) {
         Review review = reviewRepository.findById(reviewId)
             .orElseThrow(() -> new IllegalArgumentException("Review not found: " + reviewId));
         review.setSummary(summary);
@@ -280,6 +281,8 @@ public class ReviewProgressService {
         review.setRawDiff(rawDiff);
         review.setFilesFailedCount(filesFailedCount);
         review.setFilesSkippedCount(filesSkippedCount);
+        review.setCachedTokens(cachedTokens);
+        review.setThinkingTokens(thinkingTokens);
         review.setStatus(Review.ReviewStatus.COMPLETED);
         review.setCompletedAt(LocalDateTime.now());
         reviewRepository.save(review);

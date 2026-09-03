@@ -1,6 +1,6 @@
 package com.codelens.llm.providers;
 
-import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,7 +35,7 @@ public class OpenAiProvider extends AbstractLlmProvider {
     }
 
     @Override
-    protected ChatLanguageModel createChatModel() {
+    protected ChatModel createChatModel() {
         if (!isEnabled()) {
             throw new IllegalStateException("OpenAI provider is not enabled or API key is missing");
         }

@@ -419,7 +419,9 @@ public class ReviewService implements ReviewExecutor {
             result.estimatedCost(),
             result.rawDiff(),
             result.filesFailed(),
-            result.filesSkipped()
+            result.filesSkipped(),
+            result.totalCachedTokens(),
+            result.totalThinkingTokens()
         );
 
         // Re-fetch the review entity for associating child entities
@@ -663,6 +665,8 @@ public class ReviewService implements ReviewExecutor {
         usage.setTaskType("review");
         usage.setInputTokens(result.totalInputTokens());
         usage.setOutputTokens(result.totalOutputTokens());
+        usage.setCachedTokens(result.totalCachedTokens());
+        usage.setThinkingTokens(result.totalThinkingTokens());
         usage.setEstimatedCost(result.estimatedCost());
         usage.setSuccess(true);
         llmUsageRepository.save(usage);
@@ -1091,7 +1095,9 @@ public class ReviewService implements ReviewExecutor {
             result.estimatedCost(),
             result.rawDiff(),
             result.filesFailed(),
-            result.filesSkipped()
+            result.filesSkipped(),
+            result.totalCachedTokens(),
+            result.totalThinkingTokens()
         );
 
         // Re-fetch the review entity for associating child entities

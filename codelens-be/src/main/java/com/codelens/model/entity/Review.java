@@ -101,6 +101,12 @@ public class Review {
     private Integer inputTokens;
     private Integer outputTokens;
     private Double estimatedCost;
+    // Input tokens served from a prompt cache. Shows whether the prompt layout is
+    // actually winning prefix cache hits; without it a caching change is unmeasurable.
+    private Integer cachedTokens;
+    // Reasoning tokens. Billed as output, so a thinking tier's real cost is invisible
+    // without recording them separately.
+    private Integer thinkingTokens;
 
     // Processing info
     private Long processingTimeMs;

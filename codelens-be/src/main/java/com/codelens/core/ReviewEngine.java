@@ -306,6 +306,8 @@ public class ReviewEngine {
         java.util.concurrent.atomic.DoubleAdder totalEstimatedCost = new java.util.concurrent.atomic.DoubleAdder();
         AtomicInteger filesCompleted = new AtomicInteger(0);
         AtomicInteger filesFailed = new AtomicInteger(0);
+        AtomicInteger totalCachedTokens = new AtomicInteger(0);
+        AtomicInteger totalThinkingTokens = new AtomicInteger(0);
 
         // Review files in parallel
         ExecutorService executor = Executors.newFixedThreadPool(parallelThreads);
@@ -344,6 +346,8 @@ public class ReviewEngine {
                         totalInputTokens.addAndGet(fileResult.inputTokens());
                         totalOutputTokens.addAndGet(fileResult.outputTokens());
                         totalEstimatedCost.add(fileResult.estimatedCost());
+                        totalCachedTokens.addAndGet(fileResult.cachedTokens());
+                        totalThinkingTokens.addAndGet(fileResult.thinkingTokens());
 
                         // Report progress after file completion
                         int completed = filesCompleted.incrementAndGet();
@@ -409,6 +413,12 @@ public class ReviewEngine {
         long elapsed = System.currentTimeMillis() - startTime;
         log.info("Review completed in {}ms for {} files with {} issues ({} degraded, {} skipped over max-files)",
             elapsed, finalFilesToReview.size(), allIssues.size(), filesFailed.get(), filesSkippedCount);
+        if (totalInputTokens.get() > 0) {
+            log.info("Token usage: {} input ({} cached, {}%), {} output ({} thinking)",
+                totalInputTokens.get(), totalCachedTokens.get(),
+                Math.round(100.0 * totalCachedTokens.get() / totalInputTokens.get()),
+                totalOutputTokens.get(), totalThinkingTokens.get());
+        }
 
         // Report completion
         if (progressCallback != null) {
@@ -438,7 +448,9 @@ public class ReviewEngine {
             ticketScopeValidation != null ? ticketScopeValidation.result() : null,
             ticketScopeValidation != null ? ticketScopeValidation.aligned() : null,
             filesFailed.get(),
-            filesSkippedCount
+            filesSkippedCount,
+            totalCachedTokens.get(),
+            totalThinkingTokens.get()
         );
     }
 
@@ -634,6 +646,8 @@ public class ReviewEngine {
 
         // Tracks whether the LLM produced usable output for this file (see FileReviewResult).
         boolean degraded = false;
+        int cachedTokens = 0;
+        int thinkingTokens = 0;
 
         if (extraction.mode() == SmartContextExtractor.ReviewMode.SKIP_LLM) {
             log.info("Skipping LLM review for {} ({}), static analysis only",
@@ -651,6 +665,8 @@ public class ReviewEngine {
 
                 inputTokens = response.inputTokens();
                 outputTokens = response.outputTokens();
+                cachedTokens += response.cachedTokens();
+                thinkingTokens += response.thinkingTokens();
                 llmTaskType = "security";
 
                 // Parse security scan response (same format as review)
@@ -692,6 +708,8 @@ public class ReviewEngine {
 
                 inputTokens = response.inputTokens();
                 outputTokens = response.outputTokens();
+                cachedTokens += response.cachedTokens();
+                thinkingTokens += response.thinkingTokens();
                 llmTaskType = "review";
 
                 // Parse LLM response into issues and comments
@@ -791,7 +809,9 @@ public class ReviewEngine {
             inputTokens + verificationInputTokens,
             outputTokens + verificationOutputTokens,
             fileCost,
-            degraded);
+            degraded,
+            cachedTokens,
+            thinkingTokens);
     }
 
     /**
@@ -1804,11 +1824,20 @@ public class ReviewEngine {
          * output the parser could not read. Such a file contributes no findings for
          * a reason other than being clean, so it is counted and surfaced.
          */
-        boolean degraded
+        boolean degraded,
+        /** Input tokens served from a prompt cache. */
+        int cachedTokens,
+        /** Reasoning tokens, billed as output. */
+        int thinkingTokens
     ) {
         FileReviewResult(List<ReviewIssue> issues, List<ReviewComment> comments,
                 int inputTokens, int outputTokens, double estimatedCost) {
-            this(issues, comments, inputTokens, outputTokens, estimatedCost, false);
+            this(issues, comments, inputTokens, outputTokens, estimatedCost, false, 0, 0);
+        }
+
+        FileReviewResult(List<ReviewIssue> issues, List<ReviewComment> comments,
+                int inputTokens, int outputTokens, double estimatedCost, boolean degraded) {
+            this(issues, comments, inputTokens, outputTokens, estimatedCost, degraded, 0, 0);
         }
     }
 
@@ -1833,7 +1862,11 @@ public class ReviewEngine {
         /** Files whose LLM output was missing, truncated or unparseable. */
         int filesFailed,
         /** Reviewable files dropped because the PR exceeded max-files. */
-        int filesSkipped
+        int filesSkipped,
+        /** Input tokens served from a prompt cache across the whole review. */
+        int totalCachedTokens,
+        /** Reasoning tokens, billed as output, across the whole review. */
+        int totalThinkingTokens
     ) {
         // Constructor for backwards compatibility
         public ReviewResult(
@@ -1852,7 +1885,7 @@ public class ReviewEngine {
         ) {
             this(summary, issues, comments, filesReviewed, linesAdded, linesRemoved,
                 totalInputTokens, totalOutputTokens, llmProvider, estimatedCost,
-                rawDiff, parsedDiffs, null, null, 0, 0);
+                rawDiff, parsedDiffs, null, null, 0, 0, 0, 0);
         }
 
         // Constructor for callers that report ticket scope but no health counters
@@ -1874,7 +1907,7 @@ public class ReviewEngine {
         ) {
             this(summary, issues, comments, filesReviewed, linesAdded, linesRemoved,
                 totalInputTokens, totalOutputTokens, llmProvider, estimatedCost,
-                rawDiff, parsedDiffs, ticketScopeResult, ticketScopeAligned, 0, 0);
+                rawDiff, parsedDiffs, ticketScopeResult, ticketScopeAligned, 0, 0, 0, 0);
         }
     }
 
@@ -2022,6 +2055,8 @@ public class ReviewEngine {
         java.util.concurrent.atomic.DoubleAdder totalEstimatedCost = new java.util.concurrent.atomic.DoubleAdder();
         AtomicInteger filesCompleted = new AtomicInteger(0);
         AtomicInteger filesFailed = new AtomicInteger(0);
+        AtomicInteger totalCachedTokens = new AtomicInteger(0);
+        AtomicInteger totalThinkingTokens = new AtomicInteger(0);
 
         // Review files in parallel
         ExecutorService executor = Executors.newFixedThreadPool(parallelThreads);
@@ -2059,6 +2094,8 @@ public class ReviewEngine {
                         totalInputTokens.addAndGet(fileResult.inputTokens());
                         totalOutputTokens.addAndGet(fileResult.outputTokens());
                         totalEstimatedCost.add(fileResult.estimatedCost());
+                        totalCachedTokens.addAndGet(fileResult.cachedTokens());
+                        totalThinkingTokens.addAndGet(fileResult.thinkingTokens());
 
                         int completed = filesCompleted.incrementAndGet();
                         if (progressCallback != null) {
@@ -2146,7 +2183,9 @@ public class ReviewEngine {
             ticketScopeValidation != null ? ticketScopeValidation.result() : null,
             ticketScopeValidation != null ? ticketScopeValidation.aligned() : null,
             filesFailed.get(),
-            filesSkippedCount
+            filesSkippedCount,
+            totalCachedTokens.get(),
+            totalThinkingTokens.get()
         );
     }
 
@@ -2242,6 +2281,8 @@ public class ReviewEngine {
 
         // Tracks whether the LLM produced usable output for this file (see FileReviewResult).
         boolean degraded = false;
+        int cachedTokens = 0;
+        int thinkingTokens = 0;
 
         if (extraction.mode() == SmartContextExtractor.ReviewMode.SKIP_LLM) {
             log.info("Skipping LLM review for {} ({}), static analysis only",
@@ -2254,6 +2295,8 @@ public class ReviewEngine {
                     securityPrompt, "security", LlmProvider.ResponseShape.REVIEW_ISSUES);
                 inputTokens = response.inputTokens();
                 outputTokens = response.outputTokens();
+                cachedTokens += response.cachedTokens();
+                thinkingTokens += response.thinkingTokens();
                 llmTaskType = "security";
                 // Filter to changed lines to prevent LLM hallucinations
                 boolean parsed = parseReviewResponse(response.content(), file.filename(), request.commitSha(),
@@ -2272,6 +2315,8 @@ public class ReviewEngine {
                     prompt, "review", LlmProvider.ResponseShape.REVIEW_ISSUES);
                 inputTokens = response.inputTokens();
                 outputTokens = response.outputTokens();
+                cachedTokens += response.cachedTokens();
+                thinkingTokens += response.thinkingTokens();
                 llmTaskType = "review";
                 // Filter to changed lines to prevent LLM hallucinations
                 boolean parsed = parseReviewResponse(response.content(), file.filename(), request.commitSha(),
@@ -2327,7 +2372,8 @@ public class ReviewEngine {
             }
         }
 
-        return new FileReviewResult(issues, comments, inputTokens, outputTokens, fileCost, degraded);
+        return new FileReviewResult(issues, comments, inputTokens, outputTokens, fileCost, degraded,
+            cachedTokens, thinkingTokens);
     }
 
     /**

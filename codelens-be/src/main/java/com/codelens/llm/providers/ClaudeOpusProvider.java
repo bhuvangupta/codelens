@@ -1,7 +1,7 @@
 package com.codelens.llm.providers;
 
 import dev.langchain4j.model.anthropic.AnthropicChatModel;
-import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.ChatModel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -35,7 +35,7 @@ public class ClaudeOpusProvider extends AbstractLlmProvider {
     }
 
     @Override
-    protected ChatLanguageModel createChatModel() {
+    protected ChatModel createChatModel() {
         if (!isEnabled()) {
             throw new IllegalStateException("Claude Opus provider is not enabled or API key is missing");
         }

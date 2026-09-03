@@ -1,6 +1,6 @@
 package com.codelens.llm.providers;
 
-import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,7 +37,7 @@ public class OllamaProvider extends AbstractLlmProvider {
     }
 
     @Override
-    protected ChatLanguageModel createChatModel() {
+    protected ChatModel createChatModel() {
         if (!isEnabled()) {
             throw new IllegalStateException("Ollama provider is not enabled or base URL is missing");
         }

@@ -3,13 +3,11 @@ package com.codelens.llm.providers;
 import com.codelens.llm.LlmProvider;
 import com.codelens.llm.ReviewIssueSchema;
 import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.request.ResponseFormat;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.FinishReason;
-import dev.langchain4j.model.output.Response;
 import dev.langchain4j.model.output.TokenUsage;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -22,33 +20,28 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * A single provider bean serves review, security scan, PR summary, ticket scope and
  * verification, and those want different output shapes. The response format is therefore
- * attached per request rather than baked into the model at construction. If it were baked
- * in, enabling structured output for reviews would also force the PR summary — which is
- * markdown — to come back as a JSON array of issues.
+ * attached to each request rather than baked into the model at construction. If it were
+ * baked in, enabling structured output for reviews would also force the PR summary —
+ * which is markdown — to come back as a JSON array of issues.
  */
 class ResponseShapeRoutingTest {
 
-    /** Records which call path was taken and what response format came with it. */
-    static class RecordingModel implements ChatLanguageModel {
-        boolean legacyGenerateCalled;
-        boolean chatRequestCalled;
-        ResponseFormat seenResponseFormat;
-
-        @Override
-        public Response<AiMessage> generate(List<ChatMessage> messages) {
-            legacyGenerateCalled = true;
-            return Response.from(AiMessage.from("[]"), new TokenUsage(10, 5), FinishReason.STOP);
-        }
+    /** Records the response format that arrived on the request. */
+    static class RecordingModel implements ChatModel {
+        ChatRequest lastRequest;
 
         @Override
         public ChatResponse chat(ChatRequest request) {
-            chatRequestCalled = true;
-            seenResponseFormat = request.responseFormat();
+            lastRequest = request;
             return ChatResponse.builder()
                 .aiMessage(AiMessage.from("[]"))
                 .tokenUsage(new TokenUsage(10, 5))
                 .finishReason(FinishReason.STOP)
                 .build();
+        }
+
+        ResponseFormat seenResponseFormat() {
+            return lastRequest == null ? null : lastRequest.responseFormat();
         }
     }
 
@@ -59,7 +52,7 @@ class ResponseShapeRoutingTest {
         @Override public String getName() { return "structured-test"; }
         @Override public boolean isEnabled() { return true; }
         @Override public double estimateCost(int in, int out) { return 0; }
-        @Override protected ChatLanguageModel createChatModel() { return model; }
+        @Override protected ChatModel createChatModel() { return model; }
 
         @Override
         protected ResponseFormat responseFormatFor(LlmProvider.ResponseShape shape) {
@@ -75,7 +68,7 @@ class ResponseShapeRoutingTest {
         @Override public String getName() { return "plain-test"; }
         @Override public boolean isEnabled() { return true; }
         @Override public double estimateCost(int in, int out) { return 0; }
-        @Override protected ChatLanguageModel createChatModel() { return model; }
+        @Override protected ChatModel createChatModel() { return model; }
     }
 
     private static List<Map<String, String>> prompt() {
@@ -90,9 +83,7 @@ class ResponseShapeRoutingTest {
             StructuredProvider provider = new StructuredProvider();
             provider.chat(prompt(), LlmProvider.ResponseShape.REVIEW_ISSUES);
 
-            assertTrue(provider.model.chatRequestCalled, "should use the ChatRequest path");
-            assertFalse(provider.model.legacyGenerateCalled);
-            assertSame(ReviewIssueSchema.responseFormat(), provider.model.seenResponseFormat);
+            assertSame(ReviewIssueSchema.responseFormat(), provider.model.seenResponseFormat());
         }
 
         @Test
@@ -100,10 +91,8 @@ class ResponseShapeRoutingTest {
             StructuredProvider provider = new StructuredProvider();
             provider.chat(prompt(), LlmProvider.ResponseShape.FREE_TEXT);
 
-            assertTrue(provider.model.legacyGenerateCalled,
-                "a summary must not be forced into the review-issue schema");
-            assertFalse(provider.model.chatRequestCalled);
-            assertNull(provider.model.seenResponseFormat);
+            assertNull(provider.model.seenResponseFormat(),
+                "a markdown summary must not be forced into the review-issue schema");
         }
 
         @Test
@@ -111,15 +100,22 @@ class ResponseShapeRoutingTest {
             StructuredProvider provider = new StructuredProvider();
             provider.chat(prompt());
 
-            assertTrue(provider.model.legacyGenerateCalled);
-            assertFalse(provider.model.chatRequestCalled);
+            assertNull(provider.model.seenResponseFormat());
         }
 
         @Test
         void aNullShapeIsTreatedAsFreeText() {
             StructuredProvider provider = new StructuredProvider();
             assertDoesNotThrow(() -> provider.chat(prompt(), null));
-            assertTrue(provider.model.legacyGenerateCalled);
+            assertNull(provider.model.seenResponseFormat());
+        }
+
+        @Test
+        void messagesStillReachTheModel() {
+            StructuredProvider provider = new StructuredProvider();
+            provider.chat(prompt(), LlmProvider.ResponseShape.REVIEW_ISSUES);
+
+            assertEquals(1, provider.model.lastRequest.messages().size());
         }
     }
 
@@ -127,14 +123,13 @@ class ResponseShapeRoutingTest {
     class WhenProviderCannotEnforceSchemas {
 
         @Test
-        void reviewCallsStillSucceedOnTheLegacyPath() {
+        void reviewCallsStillSucceedWithoutASchema() {
             PlainProvider provider = new PlainProvider();
             LlmProvider.LlmResponse response =
                 provider.chat(prompt(), LlmProvider.ResponseShape.REVIEW_ISSUES);
 
-            assertTrue(provider.model.legacyGenerateCalled,
-                "a provider without schema support must not be routed through ChatRequest");
-            assertFalse(provider.model.chatRequestCalled);
+            assertNull(provider.model.seenResponseFormat(),
+                "a provider that cannot enforce a schema must not be sent one");
             assertEquals("[]", response.content());
             assertEquals(10, response.inputTokens());
             assertEquals(5, response.outputTokens());
@@ -145,7 +140,7 @@ class ResponseShapeRoutingTest {
     class TokenAndTruncationReporting {
 
         @Test
-        void structuredPathStillReportsUsageAndFinishReason() {
+        void reportsUsageAndFinishReason() {
             StructuredProvider provider = new StructuredProvider();
             LlmProvider.LlmResponse response =
                 provider.chat(prompt(), LlmProvider.ResponseShape.REVIEW_ISSUES);
@@ -156,11 +151,12 @@ class ResponseShapeRoutingTest {
         }
 
         @Test
-        void structuredPathFlagsTruncation() {
+        void flagsTruncationEvenWithASchema() {
             StructuredProvider provider = new StructuredProvider() {
-                @Override protected ChatLanguageModel createChatModel() {
+                @Override protected ChatModel createChatModel() {
                     return new RecordingModel() {
                         @Override public ChatResponse chat(ChatRequest request) {
+                            lastRequest = request;
                             return ChatResponse.builder()
                                 .aiMessage(AiMessage.from("[{\"line\":1"))
                                 .tokenUsage(new TokenUsage(10, 16384))

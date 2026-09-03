@@ -2,7 +2,7 @@ package com.codelens.llm.providers;
 
 import com.codelens.llm.LlmProvider;
 import com.codelens.llm.ReviewIssueSchema;
-import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ResponseFormat;
 import dev.langchain4j.model.googleai.GeminiHarmBlockThreshold;
 import dev.langchain4j.model.googleai.GeminiHarmCategory;
@@ -77,7 +77,7 @@ public class GeminiProvider extends AbstractLlmProvider {
     }
 
     @Override
-    protected ChatLanguageModel createChatModel() {
+    protected ChatModel createChatModel() {
         if (!isEnabled()) {
             throw new IllegalStateException("Gemini provider is not enabled or API key is missing");
         }

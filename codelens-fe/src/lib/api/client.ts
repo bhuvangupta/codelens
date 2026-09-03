@@ -339,6 +339,9 @@ export interface Review {
 	// Review health: files that produced no findings for a reason other than being clean
 	filesFailedCount?: number | null;
 	filesSkippedCount?: number | null;
+	// Token breakdown: cached input (prefix cache hits) and reasoning tokens
+	cachedTokens?: number | null;
+	thinkingTokens?: number | null;
 	createdAt: string;
 	completedAt: string | null;
 	cancelledAt?: string | null;

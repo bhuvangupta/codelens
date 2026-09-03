@@ -43,6 +43,12 @@ public class LlmUsage {
     @Column(nullable = false)
     private Integer outputTokens;
 
+    /** Input tokens served from a prompt cache. */
+    private Integer cachedTokens;
+
+    /** Reasoning tokens, billed as output. */
+    private Integer thinkingTokens;
+
     @Column(nullable = false)
     private Double estimatedCost;
 

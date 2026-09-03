@@ -647,6 +647,33 @@
 						<p class="text-xl font-bold text-indigo-600">{((review.inputTokens || 0) + (review.outputTokens || 0)).toLocaleString()}</p>
 					</div>
 				</div>
+				{#if (review.cachedTokens ?? 0) > 0 || (review.thinkingTokens ?? 0) > 0}
+					<div class="mt-4 pt-4 border-t border-slate-100 space-y-2">
+						{#if (review.cachedTokens ?? 0) > 0}
+							<div class="flex items-center justify-between">
+								<span class="text-sm text-slate-500">
+									Cached Input
+									<span class="text-slate-400">&middot; served from prompt cache</span>
+								</span>
+								<span class="font-semibold text-slate-900">
+									{(review.cachedTokens ?? 0).toLocaleString()}
+									<span class="text-slate-400 font-normal">
+										({Math.round(100 * (review.cachedTokens ?? 0) / (review.inputTokens || 1))}%)
+									</span>
+								</span>
+							</div>
+						{/if}
+						{#if (review.thinkingTokens ?? 0) > 0}
+							<div class="flex items-center justify-between">
+								<span class="text-sm text-slate-500">
+									Reasoning
+									<span class="text-slate-400">&middot; billed as output</span>
+								</span>
+								<span class="font-semibold text-slate-900">{(review.thinkingTokens ?? 0).toLocaleString()}</span>
+							</div>
+						{/if}
+					</div>
+				{/if}
 				{#if review.estimatedCost}
 					<div class="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
 						<span class="text-sm text-slate-500">Estimated Cost</span>
