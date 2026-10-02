@@ -1,7 +1,13 @@
 package com.codelens.service;
 
+import com.codelens.core.DiffParser;
 import com.codelens.core.ReviewEngine;
 import com.codelens.model.entity.Review;
+import com.codelens.model.entity.ReviewFileDiff;
+import com.codelens.model.entity.ReviewIssue;
+import com.codelens.repository.ReviewCommentRepository;
+import com.codelens.repository.ReviewFileDiffRepository;
+import com.codelens.repository.ReviewIssueRepository;
 import com.codelens.repository.ReviewRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -10,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.codelens.util.UuidUtils;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,6 +31,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ReviewProgressService {
 
     private final ReviewRepository reviewRepository;
+    private final ReviewIssueRepository issueRepository;
+    private final ReviewCommentRepository commentRepository;
+    private final ReviewFileDiffRepository fileDiffRepository;
 
     /**
      * Tracks the last seen filesCompleted count per review.
@@ -32,8 +42,14 @@ public class ReviewProgressService {
      */
     private final Map<UUID, Integer> lastSeenCount = new ConcurrentHashMap<>();
 
-    public ReviewProgressService(ReviewRepository reviewRepository) {
+    public ReviewProgressService(ReviewRepository reviewRepository,
+                                 ReviewIssueRepository issueRepository,
+                                 ReviewCommentRepository commentRepository,
+                                 ReviewFileDiffRepository fileDiffRepository) {
         this.reviewRepository = reviewRepository;
+        this.issueRepository = issueRepository;
+        this.commentRepository = commentRepository;
+        this.fileDiffRepository = fileDiffRepository;
     }
 
     /**
@@ -251,47 +267,107 @@ public class ReviewProgressService {
      * Save review results in a fresh transaction. Does a fresh findById to get the
      * latest @Version, preventing optimistic locking failures when the caller has
      * been holding a stale entity across long-running I/O.
+     *
+     * Issues, comments and file diffs are saved in this same transaction so the review
+     * is never visible as COMPLETED without them. The caller's transaction stays open
+     * while it posts to the PR, so anything saved there commits minutes later, or never.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void saveReviewResults(UUID reviewId, String summary, int filesChanged,
-            int linesAdded, int linesDeleted, int issuesFound,
-            int criticalIssues, int highIssues, int mediumIssues, int lowIssues,
-            int inputTokens, int outputTokens,
-            String ticketScopeResult, Boolean ticketScopeAligned,
-            String llmProvider, Double estimatedCost, String rawDiff,
-            int filesFailedCount, int filesSkippedCount,
-            int cachedTokens, int thinkingTokens) {
+    public void saveReviewResults(UUID reviewId, ReviewEngine.ReviewResult result) {
         Review review = reviewRepository.findById(reviewId)
             .orElseThrow(() -> new IllegalArgumentException("Review not found: " + reviewId));
-        review.setSummary(summary);
-        review.setFilesChanged(filesChanged);
-        review.setLinesAdded(linesAdded);
-        review.setLinesDeleted(linesDeleted);
-        review.setIssuesFound(issuesFound);
-        review.setCriticalIssues(criticalIssues);
-        review.setHighIssues(highIssues);
-        review.setMediumIssues(mediumIssues);
-        review.setLowIssues(lowIssues);
-        review.setInputTokens(inputTokens);
-        review.setOutputTokens(outputTokens);
-        review.setTicketScopeResult(ticketScopeResult);
-        review.setTicketScopeAligned(ticketScopeAligned);
-        review.setLlmProvider(llmProvider);
-        review.setEstimatedCost(estimatedCost);
-        review.setRawDiff(rawDiff);
-        review.setFilesFailedCount(filesFailedCount);
-        review.setFilesSkippedCount(filesSkippedCount);
-        review.setCachedTokens(cachedTokens);
-        review.setThinkingTokens(thinkingTokens);
+        List<ReviewIssue> issues = result.issues();
+        review.setSummary(result.summary());
+        review.setFilesChanged(result.filesReviewed());
+        review.setLinesAdded(result.linesAdded());
+        review.setLinesDeleted(result.linesRemoved());
+        review.setIssuesFound(issues.size());
+        review.setCriticalIssues(countBySeverity(issues, ReviewIssue.Severity.CRITICAL));
+        review.setHighIssues(countBySeverity(issues, ReviewIssue.Severity.HIGH));
+        review.setMediumIssues(countBySeverity(issues, ReviewIssue.Severity.MEDIUM));
+        review.setLowIssues(countBySeverity(issues, ReviewIssue.Severity.LOW));
+        review.setInputTokens(result.totalInputTokens());
+        review.setOutputTokens(result.totalOutputTokens());
+        review.setTicketScopeResult(result.ticketScopeResult());
+        review.setTicketScopeAligned(result.ticketScopeAligned());
+        review.setLlmProvider(result.llmProvider());
+        review.setEstimatedCost(result.estimatedCost());
+        review.setRawDiff(result.rawDiff());
+        review.setFilesFailedCount(result.filesFailed());
+        review.setFilesSkippedCount(result.filesSkipped());
+        review.setCachedTokens(result.totalCachedTokens());
+        review.setThinkingTokens(result.totalThinkingTokens());
         review.setStatus(Review.ReviewStatus.COMPLETED);
         review.setCompletedAt(LocalDateTime.now());
         reviewRepository.save(review);
-        if (filesFailedCount > 0 || filesSkippedCount > 0) {
+
+        issues.forEach(issue -> issue.setReview(review));
+        issueRepository.saveAll(issues);
+        result.comments().forEach(comment -> comment.setReview(review));
+        commentRepository.saveAll(result.comments());
+        if (result.parsedDiffs() != null) {
+            fileDiffRepository.saveAll(result.parsedDiffs().stream()
+                .map(fileDiff -> toReviewFileDiff(review, fileDiff))
+                .toList());
+        }
+        if (result.filesFailed() > 0 || result.filesSkipped() > 0) {
             log.warn("Review {} completed with reduced coverage: {} file(s) produced unusable LLM output, "
                     + "{} file(s) were not reviewed (max-files cap)",
-                reviewId, filesFailedCount, filesSkippedCount);
+                reviewId, result.filesFailed(), result.filesSkipped());
         }
-        log.info("Review {} results saved (status=COMPLETED)", reviewId);
+        log.info("Review {} results saved (status=COMPLETED, {} issues)", reviewId, issues.size());
+    }
+
+    private static int countBySeverity(List<ReviewIssue> issues, ReviewIssue.Severity severity) {
+        return (int) issues.stream().filter(i -> i.getSeverity() == severity).count();
+    }
+
+    private static ReviewFileDiff toReviewFileDiff(Review review, DiffParser.FileDiff fileDiff) {
+        int additions = 0;
+        int deletions = 0;
+        for (DiffParser.Hunk hunk : fileDiff.hunks()) {
+            for (DiffParser.DiffLine line : hunk.lines()) {
+                if (line.type() == DiffParser.DiffLine.Type.ADDITION) additions++;
+                else if (line.type() == DiffParser.DiffLine.Type.DELETION) deletions++;
+            }
+        }
+
+        ReviewFileDiff.FileStatus status = ReviewFileDiff.FileStatus.MODIFIED;
+        if (fileDiff.oldPath() == null || fileDiff.oldPath().equals("/dev/null")) {
+            status = ReviewFileDiff.FileStatus.ADDED;
+        } else if (fileDiff.newPath() == null || fileDiff.newPath().equals("/dev/null")) {
+            status = ReviewFileDiff.FileStatus.DELETED;
+        } else if (!fileDiff.oldPath().equals(fileDiff.newPath())) {
+            status = ReviewFileDiff.FileStatus.RENAMED;
+        }
+
+        StringBuilder patchBuilder = new StringBuilder();
+        for (DiffParser.Hunk hunk : fileDiff.hunks()) {
+            patchBuilder.append("@@ -").append(hunk.oldStart()).append(",").append(hunk.oldCount())
+                .append(" +").append(hunk.newStart()).append(",").append(hunk.newCount()).append(" @@");
+            if (hunk.context() != null && !hunk.context().isEmpty()) {
+                patchBuilder.append(" ").append(hunk.context());
+            }
+            patchBuilder.append("\n");
+            for (DiffParser.DiffLine line : hunk.lines()) {
+                switch (line.type()) {
+                    case ADDITION -> patchBuilder.append("+");
+                    case DELETION -> patchBuilder.append("-");
+                    case CONTEXT -> patchBuilder.append(" ");
+                }
+                patchBuilder.append(line.content()).append("\n");
+            }
+        }
+
+        return ReviewFileDiff.builder()
+            .review(review)
+            .filePath(fileDiff.getPath())
+            .oldPath(fileDiff.oldPath())
+            .status(status)
+            .additions(additions)
+            .deletions(deletions)
+            .patch(patchBuilder.toString())
+            .build();
     }
 
 }
