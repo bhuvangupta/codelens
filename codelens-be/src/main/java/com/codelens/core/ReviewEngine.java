@@ -203,6 +203,12 @@ public class ReviewEngine {
         PullRequestInfo prInfo = gitProvider.getPullRequest(request.owner(), request.repo(), request.prNumber());
         log.info("Reviewing PR: {} by {}", prInfo.title(), prInfo.author());
 
+        // Get changed files and reject an over-limit PR before doing any other work
+        List<ChangedFile> changedFiles = gitProvider.getChangedFiles(request.owner(), request.repo(), request.prNumber());
+        log.info("Found {} changed files", changedFiles.size());
+        enforceDiffLineLimit(changedFiles,
+            "PR too large: %d lines changed exceeds limit of %d lines. Please split into smaller PRs.");
+
         // Try to fetch lint configs from repo for static analysis
         // Note: Config is passed as parameter to avoid ThreadLocal issues in async execution
         final LintConfigBundle lintConfigBundle = lintConfigService.fetchAll(
@@ -228,10 +234,6 @@ public class ReviewEngine {
                 learningContext.activeHints().size());
         }
 
-        // Get changed files
-        List<ChangedFile> changedFiles = gitProvider.getChangedFiles(request.owner(), request.repo(), request.prNumber());
-        log.info("Found {} changed files", changedFiles.size());
-
         // Build PR-wide change manifest once (cross-file context for every per-file prompt)
         final List<ChangeManifestBuilder.Entry> manifestEntries = changedFiles.stream()
             .map(f -> ChangeManifestBuilder.buildEntry(f.filename(), f.additions(), f.deletions(), f.patch()))
@@ -247,20 +249,6 @@ public class ReviewEngine {
             } catch (Exception e) {
                 log.warn("Code intelligence graph update failed (non-blocking): {}", e.getMessage());
             }
-        }
-
-        // Calculate total diff lines for LLM-reviewable files only and enforce limit
-        int totalDiffLines = changedFiles.stream()
-            .filter(f -> !shouldSkipLlmReview(f.filename()))
-            .mapToInt(f -> f.additions() + f.deletions())
-            .sum();
-        log.info("Total LLM-reviewable diff lines: {} (limit: {})", totalDiffLines, maxDiffLines);
-
-        if (totalDiffLines > maxDiffLines) {
-            // Cleanup is handled by finally block in executeReview()
-            throw new IllegalArgumentException(String.format(
-                "PR too large: %d lines changed exceeds limit of %d lines. Please split into smaller PRs.",
-                totalDiffLines, maxDiffLines));
         }
 
         // Filter out files that don't need review
@@ -538,6 +526,23 @@ public class ReviewEngine {
             }
         }
         return false;
+    }
+
+    /**
+     * Rejects a change whose LLM-reviewable lines exceed max-diff-lines. Call it straight after
+     * fetching the changed files: anything earlier than this (lint configs, rules, learning context,
+     * the code-graph update) is wasted work on a change that is about to be rejected.
+     */
+    private void enforceDiffLineLimit(List<ChangedFile> changedFiles, String tooLargeMessage) {
+        int totalDiffLines = changedFiles.stream()
+            .filter(f -> !shouldSkipLlmReview(f.filename()))
+            .mapToInt(f -> f.additions() + f.deletions())
+            .sum();
+        log.info("Total LLM-reviewable diff lines: {} (limit: {})", totalDiffLines, maxDiffLines);
+
+        if (totalDiffLines > maxDiffLines) {
+            throw new IllegalArgumentException(String.format(tooLargeMessage, totalDiffLines, maxDiffLines));
+        }
     }
 
     /**
@@ -1970,6 +1975,11 @@ public class ReviewEngine {
         GitProvider.CommitInfo commitInfo = gitProvider.getCommit(request.owner(), request.repo(), request.commitSha());
         log.info("Reviewing commit: {} by {}", commitInfo.message().split("\n")[0], commitInfo.author());
 
+        // Get changed files and reject an over-limit commit before doing any other work
+        List<GitProvider.ChangedFile> changedFiles = gitProvider.getCommitChangedFiles(request.owner(), request.repo(), request.commitSha());
+        log.info("Found {} changed files in commit", changedFiles.size());
+        enforceDiffLineLimit(changedFiles, "Commit too large: %d lines changed exceeds limit of %d lines.");
+
         // Fetch lint configs for static analysis
         final LintConfigBundle lintConfigBundle = lintConfigService.fetchAll(
             gitProvider, request.owner(), request.repo(), request.commitSha());
@@ -1991,23 +2001,6 @@ public class ReviewEngine {
                 learningContext.suppressedRuleKeys().size(),
                 learningContext.severityOverrides().size(),
                 learningContext.activeHints().size());
-        }
-
-        // Get changed files in this commit
-        List<GitProvider.ChangedFile> changedFiles = gitProvider.getCommitChangedFiles(request.owner(), request.repo(), request.commitSha());
-        log.info("Found {} changed files in commit", changedFiles.size());
-
-        // Calculate total diff lines for LLM-reviewable files only
-        int totalDiffLines = changedFiles.stream()
-            .filter(f -> !shouldSkipLlmReview(f.filename()))
-            .mapToInt(f -> f.additions() + f.deletions())
-            .sum();
-        log.info("Total LLM-reviewable diff lines: {} (limit: {})", totalDiffLines, maxDiffLines);
-
-        if (totalDiffLines > maxDiffLines) {
-            throw new IllegalArgumentException(String.format(
-                "Commit too large: %d lines changed exceeds limit of %d lines.",
-                totalDiffLines, maxDiffLines));
         }
 
         // Filter files
