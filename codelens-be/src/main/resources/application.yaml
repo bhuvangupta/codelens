@@ -205,8 +205,7 @@ codelens:
 
   review:
     max-files: 50
-    max-lines-per-file: 1000
-    max-diff-lines: 5000
+    max-diff-lines: 20000
     enable-security-scan: true
     enable-auto-summary: true
 

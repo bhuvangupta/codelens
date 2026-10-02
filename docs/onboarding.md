@@ -214,7 +214,7 @@ codelens:
 
   review:
     max-files: 50
-    max-lines-per-file: 1000
+    max-diff-lines: 20000
 
   analysis:
     parallel: true

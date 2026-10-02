@@ -80,10 +80,7 @@ public class ReviewEngine {
     @Value("${codelens.review.max-files:50}")
     private int maxFiles;
 
-    @Value("${codelens.review.max-lines-per-file:1000}")
-    private int maxLinesPerFile;
-
-    @Value("${codelens.review.max-diff-lines:5000}")
+    @Value("${codelens.review.max-diff-lines:20000}")
     private int maxDiffLines;
 
     @Value("${codelens.review.parallel-threads:5}")
@@ -1664,19 +1661,6 @@ public class ReviewEngine {
             case LOW -> ReviewComment.Severity.LOW;
             case INFO -> ReviewComment.Severity.INFO;
         };
-    }
-
-    private String truncateContent(String content) {
-        String[] lines = content.split("\n");
-        if (lines.length <= maxLinesPerFile) {
-            return content;
-        }
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < maxLinesPerFile; i++) {
-            sb.append(lines[i]).append("\n");
-        }
-        sb.append("\n... (truncated)");
-        return sb.toString();
     }
 
     private String loadPromptTemplate(String name) {
