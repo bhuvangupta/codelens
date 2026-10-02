@@ -162,18 +162,20 @@ public class DiffParser {
     }
 
     /**
-     * Calculate the diff position for a given line number.
-     * The position is 1-indexed from the start of the patch.
+     * Calculate GitHub's diff position for a given line number: the line just below the
+     * first "@@" header is position 1, and every later "@@" header occupies a position.
      * Returns -1 if the line is not in the diff.
      */
     public int getDiffPosition(FileDiff fileDiff, int lineNumber) {
         int position = 0;
+        List<Hunk> hunks = fileDiff.hunks();
 
-        for (Hunk hunk : fileDiff.hunks()) {
-            // Count the hunk header line (@@ -x,y +a,b @@)
-            position++;
+        for (int h = 0; h < hunks.size(); h++) {
+            if (h > 0) {
+                position++; // later hunk header
+            }
 
-            for (DiffLine line : hunk.lines()) {
+            for (DiffLine line : hunks.get(h).lines()) {
                 position++;
 
                 // For additions and context lines, check against new file line number
