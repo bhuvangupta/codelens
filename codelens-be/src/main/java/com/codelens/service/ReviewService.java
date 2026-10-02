@@ -1,7 +1,6 @@
 package com.codelens.service;
 
 import com.codelens.core.CommentFormatter;
-import com.codelens.core.DiffParser;
 import com.codelens.core.LanguageDetector;
 import com.codelens.core.ReviewEngine;
 import com.codelens.exception.NoOrganizationException;
@@ -400,96 +399,13 @@ public class ReviewService implements ReviewExecutor {
             return;
         }
 
-        // Save results in a fresh transaction to prevent optimistic locking failures
-        progressService.saveReviewResults(reviewId,
-            result.summary(),
-            result.filesReviewed(),
-            result.linesAdded(),
-            result.linesRemoved(),
-            result.issues().size(),
-            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.CRITICAL).count(),
-            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.HIGH).count(),
-            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.MEDIUM).count(),
-            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.LOW).count(),
-            result.totalInputTokens(),
-            result.totalOutputTokens(),
-            result.ticketScopeResult(),
-            result.ticketScopeAligned(),
-            result.llmProvider(),
-            result.estimatedCost(),
-            result.rawDiff()
-        );
+        // Save results, issues, comments and file diffs in one fresh transaction, before
+        // posting to the PR, so the review is never visible as COMPLETED without its issues
+        progressService.saveReviewResults(reviewId, result);
 
-        // Re-fetch the review entity for associating child entities
+        // Re-fetch the review entity for usage tracking and notifications
         review = reviewRepository.findById(reviewId)
             .orElseThrow(() -> new IllegalArgumentException("Review not found after save: " + reviewId));
-
-        // Save issues
-        for (ReviewIssue issue : result.issues()) {
-            issue.setReview(review);
-            issueRepository.save(issue);
-        }
-
-        // Save comments
-        for (ReviewComment comment : result.comments()) {
-            comment.setReview(review);
-            commentRepository.save(comment);
-        }
-
-        // Save parsed file diffs
-        if (result.parsedDiffs() != null) {
-            for (DiffParser.FileDiff fileDiff : result.parsedDiffs()) {
-                // Calculate additions/deletions for this file
-                int additions = 0;
-                int deletions = 0;
-                for (DiffParser.Hunk hunk : fileDiff.hunks()) {
-                    for (DiffParser.DiffLine line : hunk.lines()) {
-                        if (line.type() == DiffParser.DiffLine.Type.ADDITION) additions++;
-                        else if (line.type() == DiffParser.DiffLine.Type.DELETION) deletions++;
-                    }
-                }
-
-                // Determine file status
-                ReviewFileDiff.FileStatus status = ReviewFileDiff.FileStatus.MODIFIED;
-                if (fileDiff.oldPath() == null || fileDiff.oldPath().equals("/dev/null")) {
-                    status = ReviewFileDiff.FileStatus.ADDED;
-                } else if (fileDiff.newPath() == null || fileDiff.newPath().equals("/dev/null")) {
-                    status = ReviewFileDiff.FileStatus.DELETED;
-                } else if (!fileDiff.oldPath().equals(fileDiff.newPath())) {
-                    status = ReviewFileDiff.FileStatus.RENAMED;
-                }
-
-                // Build patch string from hunks
-                StringBuilder patchBuilder = new StringBuilder();
-                for (DiffParser.Hunk hunk : fileDiff.hunks()) {
-                    patchBuilder.append("@@ -").append(hunk.oldStart()).append(",").append(hunk.oldCount())
-                        .append(" +").append(hunk.newStart()).append(",").append(hunk.newCount()).append(" @@");
-                    if (hunk.context() != null && !hunk.context().isEmpty()) {
-                        patchBuilder.append(" ").append(hunk.context());
-                    }
-                    patchBuilder.append("\n");
-                    for (DiffParser.DiffLine line : hunk.lines()) {
-                        switch (line.type()) {
-                            case ADDITION -> patchBuilder.append("+");
-                            case DELETION -> patchBuilder.append("-");
-                            case CONTEXT -> patchBuilder.append(" ");
-                        }
-                        patchBuilder.append(line.content()).append("\n");
-                    }
-                }
-
-                ReviewFileDiff reviewFileDiff = ReviewFileDiff.builder()
-                    .review(review)
-                    .filePath(fileDiff.getPath())
-                    .oldPath(fileDiff.oldPath())
-                    .status(status)
-                    .additions(additions)
-                    .deletions(deletions)
-                    .patch(patchBuilder.toString())
-                    .build();
-                fileDiffRepository.save(reviewFileDiff);
-            }
-        }
 
         // Track LLM usage with actual provider and cost
         trackLlmUsage(review, result);
@@ -1070,93 +986,13 @@ public class ReviewService implements ReviewExecutor {
             return;
         }
 
-        // Save results in a fresh transaction to prevent optimistic locking failures
-        progressService.saveReviewResults(reviewId,
-            result.summary(),
-            result.filesReviewed(),
-            result.linesAdded(),
-            result.linesRemoved(),
-            result.issues().size(),
-            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.CRITICAL).count(),
-            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.HIGH).count(),
-            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.MEDIUM).count(),
-            (int) result.issues().stream().filter(i -> i.getSeverity() == ReviewIssue.Severity.LOW).count(),
-            result.totalInputTokens(),
-            result.totalOutputTokens(),
-            result.ticketScopeResult(),
-            result.ticketScopeAligned(),
-            result.llmProvider(),
-            result.estimatedCost(),
-            result.rawDiff()
-        );
+        // Save results, issues, comments and file diffs in one fresh transaction,
+        // so the review is never visible as COMPLETED without its issues
+        progressService.saveReviewResults(reviewId, result);
 
-        // Re-fetch the review entity for associating child entities
+        // Re-fetch the review entity for usage tracking and notifications
         review = reviewRepository.findById(reviewId)
             .orElseThrow(() -> new IllegalArgumentException("Review not found after save: " + reviewId));
-
-        // Save issues
-        for (ReviewIssue issue : result.issues()) {
-            issue.setReview(review);
-            issueRepository.save(issue);
-        }
-
-        // Save comments
-        for (ReviewComment comment : result.comments()) {
-            comment.setReview(review);
-            commentRepository.save(comment);
-        }
-
-        // Save parsed file diffs
-        if (result.parsedDiffs() != null) {
-            for (DiffParser.FileDiff fileDiff : result.parsedDiffs()) {
-                int additions = 0;
-                int deletions = 0;
-                for (DiffParser.Hunk hunk : fileDiff.hunks()) {
-                    for (DiffParser.DiffLine line : hunk.lines()) {
-                        if (line.type() == DiffParser.DiffLine.Type.ADDITION) additions++;
-                        else if (line.type() == DiffParser.DiffLine.Type.DELETION) deletions++;
-                    }
-                }
-
-                ReviewFileDiff.FileStatus status = ReviewFileDiff.FileStatus.MODIFIED;
-                if (fileDiff.oldPath() == null || fileDiff.oldPath().equals("/dev/null")) {
-                    status = ReviewFileDiff.FileStatus.ADDED;
-                } else if (fileDiff.newPath() == null || fileDiff.newPath().equals("/dev/null")) {
-                    status = ReviewFileDiff.FileStatus.DELETED;
-                } else if (!fileDiff.oldPath().equals(fileDiff.newPath())) {
-                    status = ReviewFileDiff.FileStatus.RENAMED;
-                }
-
-                StringBuilder patchBuilder = new StringBuilder();
-                for (DiffParser.Hunk hunk : fileDiff.hunks()) {
-                    patchBuilder.append("@@ -").append(hunk.oldStart()).append(",").append(hunk.oldCount())
-                        .append(" +").append(hunk.newStart()).append(",").append(hunk.newCount()).append(" @@");
-                    if (hunk.context() != null && !hunk.context().isEmpty()) {
-                        patchBuilder.append(" ").append(hunk.context());
-                    }
-                    patchBuilder.append("\n");
-                    for (DiffParser.DiffLine line : hunk.lines()) {
-                        switch (line.type()) {
-                            case ADDITION -> patchBuilder.append("+");
-                            case DELETION -> patchBuilder.append("-");
-                            case CONTEXT -> patchBuilder.append(" ");
-                        }
-                        patchBuilder.append(line.content()).append("\n");
-                    }
-                }
-
-                ReviewFileDiff reviewFileDiff = ReviewFileDiff.builder()
-                    .review(review)
-                    .filePath(fileDiff.getPath())
-                    .oldPath(fileDiff.oldPath())
-                    .status(status)
-                    .additions(additions)
-                    .deletions(deletions)
-                    .patch(patchBuilder.toString())
-                    .build();
-                fileDiffRepository.save(reviewFileDiff);
-            }
-        }
 
         // Track LLM usage
         trackLlmUsage(review, result);
