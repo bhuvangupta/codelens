@@ -426,6 +426,36 @@ public class GitHubService implements GitProvider {
         }
     }
 
+    @Override
+    public List<CommitStatus> getCommitStatuses(String owner, String repo, String commitSha) {
+        if (gitHub == null) {
+            throw new IllegalStateException("GitHub client is not initialized (missing GITHUB_TOKEN?)");
+        }
+        try {
+            GHRepository repository = gitHub.getRepository(owner + "/" + repo);
+            // Newest first, so the first one seen per context is the current one
+            java.util.Map<String, CommitStatus> latest = new java.util.LinkedHashMap<>();
+            int seen = 0;
+            for (GHCommitStatus status : repository.listCommitStatuses(commitSha)) {
+                if (++seen > 300) {
+                    break;
+                }
+                CommitStatus.State state = switch (status.getState()) {
+                    case PENDING -> CommitStatus.State.PENDING;
+                    case SUCCESS -> CommitStatus.State.SUCCESS;
+                    case FAILURE -> CommitStatus.State.FAILURE;
+                    case ERROR -> CommitStatus.State.ERROR;
+                };
+                latest.putIfAbsent(status.getContext(),
+                    new CommitStatus(status.getContext(), state, status.getDescription(), status.getTargetUrl()));
+            }
+            return List.copyOf(latest.values());
+        } catch (IOException e) {
+            log.error("Failed to read statuses of {}/{}@{}", owner, repo, commitSha, e);
+            throw new RuntimeException("Failed to read commit statuses", e);
+        }
+    }
+
     public boolean isInitialized() {
         return initialized;
     }

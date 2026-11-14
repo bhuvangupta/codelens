@@ -213,6 +213,11 @@ codelens:
     #              scanners all produce a failing status.
     mode: ${SECURITY_GATE_MODE:report-only}
     timeout-seconds: 300
+    bypass:
+      # CodeLens account emails allowed to override the gate for one commit, comma-separated.
+      # Empty = nobody. From a PR: comment "/codelens bypass <reason>" (the account needs its
+      # GitHub username set in CodeLens). From CodeLens: POST /api/security-gate/bypass.
+      users: ${SECURITY_GATE_BYPASS_USERS:}
     # Repositories are cloned from <clone-base-url>/<owner>/<repo>.git using GITHUB_TOKEN
     clone-base-url: ${SECURITY_GATE_CLONE_BASE_URL:https://github.com}
     gitleaks:
@@ -232,6 +237,15 @@ codelens:
       # With offline-scan=false, a pom.xml declaring a <repository> on any other host
       # fails the check instead of being scanned (it would make this server call that host).
       allowed-repository-hosts: ${TRIVY_ALLOWED_REPOSITORY_HOSTS:repo.maven.apache.org,repo1.maven.org}
+    semgrep:
+      enabled: true
+      path: ${SEMGREP_PATH:semgrep}     # Opengrep is CLI-compatible: point this at it instead
+      # Rule packs (downloaded from the Semgrep registry at scan time) or paths to local
+      # rule files/directories. The registry rules are licensed for internal use only; if
+      # CodeLens is offered to others as a service, use your own rules with Opengrep.
+      rules: ${SEMGREP_RULES:p/java,p/owasp-top-ten}
+      # Only findings of these severities that the PR introduces fail the check
+      severities: ${SEMGREP_SEVERITIES:ERROR}
 
   review:
     max-files: 50

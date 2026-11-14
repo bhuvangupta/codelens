@@ -88,6 +88,13 @@ public interface GitProvider {
     }
 
     /**
+     * The current status of each check on a commit: the latest one per context.
+     */
+    default List<CommitStatus> getCommitStatuses(String owner, String repo, String commitSha) {
+        throw new UnsupportedOperationException(getName() + " does not support reading commit statuses yet");
+    }
+
+    /**
      * Commit status shown on the PR and usable as a required check.
      *
      * @param context     stable identifier of the check, e.g. "codelens/secrets"

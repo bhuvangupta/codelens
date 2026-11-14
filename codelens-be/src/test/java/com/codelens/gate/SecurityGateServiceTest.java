@@ -36,6 +36,7 @@ class SecurityGateServiceTest {
     private com.codelens.git.GitProvider git;
     private GitProviderFactory factory;
     private final Executor executor = Executors.newCachedThreadPool();
+    private volatile java.util.Optional<String> bypass = java.util.Optional.empty();
 
     @BeforeEach
     void setUp() {
@@ -135,6 +136,32 @@ class SecurityGateServiceTest {
     }
 
     @Test
+    void bypassedCommitIsNotScannedAgain() {
+        bypass = java.util.Optional.of("Bypassed by a@b.c: prod is down");
+
+        gate(true, "enforce", 5, scanner(GateCheck.SECRETS, c -> ScanOutcome.fail("1 secret"))).run();
+
+        verifyNoInteractions(git);
+    }
+
+    @Test
+    void bypassGivenWhileAScanIsRunningWinsOverItsResult() {
+        // DEPS is reported first, and its scan sets the bypass before returning
+        gate(true, "enforce", 5,
+            scanner(GateCheck.DEPS, c -> {
+                bypass = java.util.Optional.of("Bypassed by a@b.c: prod is down");
+                return ScanOutcome.fail("1 new vulnerability");
+            }),
+            scanner(GateCheck.SAST, c -> ScanOutcome.fail("1 finding")),
+            scanner(GateCheck.SECRETS, c -> ScanOutcome.fail("1 secret"))).run();
+
+        finalStatuses().values().forEach(status -> {
+            assertEquals(State.SUCCESS, status.state());
+            assertEquals("Bypassed by a@b.c: prod is down", status.description());
+        });
+    }
+
+    @Test
     void unknownModeIsRejectedAtStartup() {
         assertThrows(IllegalArgumentException.class, () -> gate(true, "enforced", 5));
     }
@@ -154,7 +181,8 @@ class SecurityGateServiceTest {
 
     private Runner gate(boolean enabled, String mode, int timeoutSeconds, SecurityScanner... scanners) {
         SecurityGateService service = new SecurityGateService(
-            factory, List.of(scanners), executor, enabled, mode, timeoutSeconds);
+            factory, List.of(scanners), (provider, owner, repo, sha) -> bypass, executor,
+            enabled, mode, timeoutSeconds);
         return () -> service.runForPullRequest(GitProvider.GITHUB, "owner", "repo", 7, SHA, "base456");
     }
 

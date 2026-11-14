@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
@@ -37,6 +38,7 @@ public class SecurityGateService {
 
     private final GitProviderFactory gitProviderFactory;
     private final Executor scanExecutor;
+    private final BypassLookup bypassLookup;
     private final Map<GateCheck, SecurityScanner> scanners = new EnumMap<>(GateCheck.class);
     private final boolean enabled;
     private final Mode mode;
@@ -47,16 +49,20 @@ public class SecurityGateService {
             GitProviderFactory gitProviderFactory,
             // ObjectProvider: a plain List fails startup while no scanner bean exists yet
             ObjectProvider<SecurityScanner> scannerBeans,
+            BypassLookup bypassLookup,
             @Qualifier("analysisTaskExecutor") Executor scanExecutor,
             @Value("${codelens.security-gate.enabled:false}") boolean enabled,
             @Value("${codelens.security-gate.mode:report-only}") String mode,
             @Value("${codelens.security-gate.timeout-seconds:300}") int timeoutSeconds) {
-        this(gitProviderFactory, scannerBeans.orderedStream().toList(), scanExecutor, enabled, mode, timeoutSeconds);
+        this(gitProviderFactory, scannerBeans.orderedStream().toList(), bypassLookup, scanExecutor,
+            enabled, mode, timeoutSeconds);
     }
 
     SecurityGateService(GitProviderFactory gitProviderFactory, List<SecurityScanner> scannerBeans,
-                        Executor scanExecutor, boolean enabled, String mode, int timeoutSeconds) {
+                        BypassLookup bypassLookup, Executor scanExecutor,
+                        boolean enabled, String mode, int timeoutSeconds) {
         this.gitProviderFactory = gitProviderFactory;
+        this.bypassLookup = bypassLookup;
         this.scanExecutor = scanExecutor;
         this.enabled = enabled;
         this.mode = parseMode(mode);
@@ -90,6 +96,11 @@ public class SecurityGateService {
         }
         com.codelens.git.GitProvider git = gitProviderFactory.getProvider(provider);
         ScanContext context = new ScanContext(provider, owner, repo, prNumber, headSha, baseSha);
+        if (bypassOf(context).isPresent()) {
+            // e.g. a webhook redelivery for a commit that was already bypassed
+            log.info("Security gate not re-run for {}/{} #{} at {}: commit is bypassed", owner, repo, prNumber, headSha);
+            return;
+        }
         log.info("Security gate started for {}/{} #{} at {}", owner, repo, prNumber, headSha);
 
         Map<GateCheck, CompletableFuture<ScanOutcome>> running = new EnumMap<>(GateCheck.class);
@@ -151,6 +162,12 @@ public class SecurityGateService {
                     context.owner(), context.repo(), context.prNumber(), e);
             }
         }
+        // The bypass may have been given while this scan was still running
+        Optional<String> bypass = bypassOf(context);
+        if (bypass.isPresent()) {
+            post(git, context, check, CommitStatus.State.SUCCESS, bypass.get());
+            return;
+        }
         if (mode == Mode.REPORT_ONLY) {
             post(git, context, check, CommitStatus.State.SUCCESS, "Report-only: " + result.summary());
             return;
@@ -174,6 +191,21 @@ public class SecurityGateService {
             log.error("Could not post {}={} on {}/{}@{}", check.context(), state,
                 context.owner(), context.repo(), context.headSha(), e);
         }
+    }
+
+    private Optional<String> bypassOf(ScanContext context) {
+        try {
+            return bypassLookup.activeBypass(context.provider(), context.owner(), context.repo(), context.headSha());
+        } catch (Exception e) {
+            // Cannot tell: behave as if there is no bypass, i.e. keep gating
+            log.error("Bypass lookup failed for {}/{}@{}", context.owner(), context.repo(), context.headSha(), e);
+            return Optional.empty();
+        }
+    }
+
+    /** Tells the gate whether a commit has been bypassed, and with what status text. */
+    public interface BypassLookup {
+        Optional<String> activeBypass(GitProvider provider, String owner, String repo, String headSha);
     }
 
     private enum Verdict { CLEAN, FINDINGS, BROKEN }
