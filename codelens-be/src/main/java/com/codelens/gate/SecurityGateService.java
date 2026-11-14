@@ -111,7 +111,7 @@ public class SecurityGateService {
         for (GateCheck check : GateCheck.values()) {
             CompletableFuture<ScanOutcome> future = running.get(check);
             Result result = future == null
-                ? new Result(Verdict.BROKEN, "No scanner configured")
+                ? new Result(Verdict.BROKEN, "No scanner configured", null)
                 : await(check, context, future);
             report(git, context, check, result);
         }
@@ -121,26 +121,36 @@ public class SecurityGateService {
         try {
             ScanOutcome outcome = future.get(timeoutSeconds, TimeUnit.SECONDS);
             if (outcome == null) {
-                return new Result(Verdict.BROKEN, "Scanner returned no result");
+                return new Result(Verdict.BROKEN, "Scanner returned no result", null);
             }
-            return new Result(outcome.passed() ? Verdict.CLEAN : Verdict.FINDINGS, outcome.summary());
+            return new Result(outcome.passed() ? Verdict.CLEAN : Verdict.FINDINGS,
+                outcome.summary(), outcome.details());
         } catch (TimeoutException e) {
             future.cancel(true);
             log.error("{} timed out after {}s for {}/{}@{}", check.context(), timeoutSeconds,
                 context.owner(), context.repo(), context.headSha());
-            return new Result(Verdict.BROKEN, "Scan timed out after " + timeoutSeconds + "s");
+            return new Result(Verdict.BROKEN, "Scan timed out after " + timeoutSeconds + "s", null);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return new Result(Verdict.BROKEN, "Scan interrupted");
+            return new Result(Verdict.BROKEN, "Scan interrupted", null);
         } catch (ExecutionException e) {
             log.error("{} failed for {}/{}@{}", check.context(), context.owner(), context.repo(),
                 context.headSha(), e.getCause());
             // Exception text can carry paths or tokens; keep it in the log, not on the PR
-            return new Result(Verdict.BROKEN, "Scanner error, see CodeLens logs");
+            return new Result(Verdict.BROKEN, "Scanner error, see CodeLens logs", null);
         }
     }
 
     private void report(com.codelens.git.GitProvider git, ScanContext context, GateCheck check, Result result) {
+        if (result.details() != null && !result.details().isBlank()) {
+            // Posted in report-only mode too: there the comment is the report
+            try {
+                git.postComment(context.owner(), context.repo(), context.prNumber(), result.details());
+            } catch (Exception e) {
+                log.error("Could not post {} findings on {}/{} #{}", check.context(),
+                    context.owner(), context.repo(), context.prNumber(), e);
+            }
+        }
         if (mode == Mode.REPORT_ONLY) {
             post(git, context, check, CommitStatus.State.SUCCESS, "Report-only: " + result.summary());
             return;
@@ -168,7 +178,7 @@ public class SecurityGateService {
 
     private enum Verdict { CLEAN, FINDINGS, BROKEN }
 
-    private record Result(Verdict verdict, String summary) {}
+    private record Result(Verdict verdict, String summary, String details) {}
 
     private static class ScanFailedException extends RuntimeException {
         ScanFailedException(Throwable cause) {

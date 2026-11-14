@@ -388,6 +388,44 @@ public class GitHubService implements GitProvider {
         }
     }
 
+    @Override
+    public List<String> getPullRequestCommits(String owner, String repo, int prNumber) {
+        if (gitHub == null) {
+            throw new IllegalStateException("GitHub client is not initialized (missing GITHUB_TOKEN?)");
+        }
+        try {
+            GHRepository repository = gitHub.getRepository(owner + "/" + repo);
+            GHPullRequest pr = repository.getPullRequest(prNumber);
+            List<String> shas = new java.util.ArrayList<>();
+            for (GHPullRequestCommitDetail commit : pr.listCommits()) {
+                shas.add(commit.getSha());
+            }
+            // GitHub's API lists at most 250 commits of a PR
+            if (pr.getCommits() > shas.size()) {
+                throw new IllegalStateException("PR has " + pr.getCommits() + " commits but only "
+                    + shas.size() + " can be listed");
+            }
+            return shas;
+        } catch (IOException e) {
+            log.error("Failed to list commits for {}/{} #{}", owner, repo, prNumber, e);
+            throw new RuntimeException("Failed to list pull request commits", e);
+        }
+    }
+
+    @Override
+    public String getMergeBase(String owner, String repo, String baseSha, String headSha) {
+        if (gitHub == null) {
+            throw new IllegalStateException("GitHub client is not initialized (missing GITHUB_TOKEN?)");
+        }
+        try {
+            GHRepository repository = gitHub.getRepository(owner + "/" + repo);
+            return repository.getCompare(baseSha, headSha).getMergeBaseCommit().getSHA1();
+        } catch (IOException e) {
+            log.error("Failed to find merge base of {}...{} in {}/{}", baseSha, headSha, owner, repo, e);
+            throw new RuntimeException("Failed to find merge base", e);
+        }
+    }
+
     public boolean isInitialized() {
         return initialized;
     }

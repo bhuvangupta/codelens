@@ -71,6 +71,23 @@ public interface GitProvider {
     }
 
     /**
+     * SHAs of the commits a pull request adds, oldest first. Must throw rather than
+     * return a partial list, because callers use it to decide what gets security-scanned.
+     */
+    default List<String> getPullRequestCommits(String owner, String repo, int prNumber) {
+        throw new UnsupportedOperationException(getName() + " does not support listing PR commits yet");
+    }
+
+    /**
+     * The commit a PR branched from: the common ancestor of its base branch and head.
+     * Scanners compare against this, not the base branch tip, so that fixes landed on
+     * the base branch after the PR was cut are not counted against the PR.
+     */
+    default String getMergeBase(String owner, String repo, String baseSha, String headSha) {
+        throw new UnsupportedOperationException(getName() + " does not support merge-base lookup yet");
+    }
+
+    /**
      * Commit status shown on the PR and usable as a required check.
      *
      * @param context     stable identifier of the check, e.g. "codelens/secrets"

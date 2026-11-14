@@ -107,6 +107,15 @@ class SecurityGateServiceTest {
     }
 
     @Test
+    void findingDetailsArePostedAsPrCommentEvenInReportOnlyMode() {
+        gate(true, "report-only", 5,
+            scanner(GateCheck.SECRETS, c -> ScanOutcome.fail("1 potential secret", "## details"))).run();
+
+        verify(git).postComment("owner", "repo", 7, "## details");
+        assertEquals(State.SUCCESS, finalStatuses().get("codelens/secrets").state());
+    }
+
+    @Test
     void pendingIsPostedBeforeTheResult() {
         gate(true, "enforce", 5, scanner(GateCheck.SECRETS, c -> ScanOutcome.pass("ok"))).run();
 

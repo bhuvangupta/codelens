@@ -21,14 +21,20 @@ public interface SecurityScanner {
     /**
      * @param passed  true when nothing gate-worthy was found
      * @param summary one line for the commit status, e.g. "2 new HIGH vulnerabilities"
+     * @param details optional markdown for a PR comment listing the findings, may be null
      */
-    record ScanOutcome(boolean passed, String summary) {
+    record ScanOutcome(boolean passed, String summary, String details) {
         public static ScanOutcome pass(String summary) {
-            return new ScanOutcome(true, summary);
+            return new ScanOutcome(true, summary, null);
         }
 
         public static ScanOutcome fail(String summary) {
-            return new ScanOutcome(false, summary);
+            return new ScanOutcome(false, summary, null);
+        }
+
+        /** @param details markdown posted as a PR comment; must never contain secret values */
+        public static ScanOutcome fail(String summary, String details) {
+            return new ScanOutcome(false, summary, details);
         }
     }
 }

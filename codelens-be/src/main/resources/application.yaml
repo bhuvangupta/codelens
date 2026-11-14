@@ -213,6 +213,25 @@ codelens:
     #              scanners all produce a failing status.
     mode: ${SECURITY_GATE_MODE:report-only}
     timeout-seconds: 300
+    # Repositories are cloned from <clone-base-url>/<owner>/<repo>.git using GITHUB_TOKEN
+    clone-base-url: ${SECURITY_GATE_CLONE_BASE_URL:https://github.com}
+    gitleaks:
+      enabled: true
+      path: ${GITLEAKS_PATH:gitleaks}   # needs gitleaks 8.19+ (the "git" subcommand)
+    trivy:
+      enabled: true
+      path: ${TRIVY_PATH:trivy}
+      # Only vulnerabilities of these severities that the PR introduces fail the check
+      severities: HIGH,CRITICAL
+      # false: Trivy resolves parent POMs and transitive dependencies from Maven Central
+      #        and from any <repositories> the scanned pom.xml declares, so restrict
+      #        outbound network access of this host.
+      # true:  no network access, but versions inherited from a parent POM/BOM (most
+      #        Spring Boot dependencies) are only resolved if they are in the local ~/.m2.
+      offline-scan: ${TRIVY_OFFLINE_SCAN:false}
+      # With offline-scan=false, a pom.xml declaring a <repository> on any other host
+      # fails the check instead of being scanned (it would make this server call that host).
+      allowed-repository-hosts: ${TRIVY_ALLOWED_REPOSITORY_HOSTS:repo.maven.apache.org,repo1.maven.org}
 
   review:
     max-files: 50
@@ -264,11 +283,6 @@ codelens:
     npm-audit:
       enabled: true
       fail-on-severity: high
-
-    owasp:
-      enabled: true
-      fail-on-cvss: 7.0
-      update-on-startup: false
 
   # Code Intelligence - structural graph for enhanced reviews
   intelligence:
