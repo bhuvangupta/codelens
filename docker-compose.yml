@@ -45,6 +45,7 @@ services:
       - codelens-network
     volumes:
       - backend-logs:/app/logs
+      - trivy-cache:/var/cache/trivy   # security gate: Trivy vulnerability database
 
   # CodeLens Frontend UI
   frontend:
@@ -129,4 +130,5 @@ volumes:
   redis-data:
     driver: local
   backend-logs:
+  trivy-cache:
     driver: local
