@@ -1,5 +1,6 @@
 package com.codelens.git.github;
 
+import com.codelens.gate.SecurityGateService;
 import com.codelens.model.entity.Repository.GitProvider;
 import com.codelens.service.ReviewService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,13 +25,16 @@ import java.util.HexFormat;
 public class GitHubWebhookController {
 
     private final ReviewService reviewService;
+    private final SecurityGateService securityGateService;
     private final ObjectMapper objectMapper;
 
     @Value("${codelens.git.github.webhook-secret:}")
     private String webhookSecret;
 
-    public GitHubWebhookController(ReviewService reviewService, ObjectMapper objectMapper) {
+    public GitHubWebhookController(ReviewService reviewService, SecurityGateService securityGateService,
+                                   ObjectMapper objectMapper) {
         this.reviewService = reviewService;
+        this.securityGateService = securityGateService;
         this.objectMapper = objectMapper;
     }
 
@@ -86,6 +90,10 @@ public class GitHubWebhookController {
 
             log.info("PR {} on {}/{}: {}", action, owner, repoName, prNumber);
 
+            // Security gate runs on its own pipeline: it must not wait for, or be
+            // skipped by, the LLM review (dedupe, size limits, review failures).
+            triggerSecurityGate(pr, owner, repoName, prNumber);
+
             // Trigger async review
             reviewService.submitReviewFromWebhook(
                 GitProvider.GITHUB,
@@ -94,6 +102,22 @@ public class GitHubWebhookController {
                 prNumber,
                 prUrl
             );
+        }
+    }
+
+    private void triggerSecurityGate(JsonNode pr, String owner, String repoName, int prNumber) {
+        String headSha = pr.path("head").path("sha").asText("");
+        String baseSha = pr.path("base").path("sha").asText("");
+        if (headSha.isEmpty()) {
+            log.warn("No head SHA in pull_request payload for {}/{} #{}, security gate not run",
+                owner, repoName, prNumber);
+            return;
+        }
+        try {
+            securityGateService.runForPullRequest(GitProvider.GITHUB, owner, repoName, prNumber, headSha, baseSha);
+        } catch (Exception e) {
+            // Never let a gate dispatch failure drop the review
+            log.error("Failed to dispatch security gate for {}/{} #{}", owner, repoName, prNumber, e);
         }
     }
 

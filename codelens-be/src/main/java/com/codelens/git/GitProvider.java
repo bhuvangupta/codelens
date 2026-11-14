@@ -63,6 +63,25 @@ public interface GitProvider {
     RepositoryInfo getRepository(String owner, String repo);
 
     /**
+     * Set a commit status (merge gate signal) on a commit.
+     * Providers that do not support it throw UnsupportedOperationException.
+     */
+    default void setCommitStatus(String owner, String repo, String commitSha, CommitStatus status) {
+        throw new UnsupportedOperationException(getName() + " does not support commit statuses yet");
+    }
+
+    /**
+     * Commit status shown on the PR and usable as a required check.
+     *
+     * @param context     stable identifier of the check, e.g. "codelens/secrets"
+     * @param description short human-readable result (providers truncate long text)
+     * @param targetUrl   optional link to details, may be null
+     */
+    record CommitStatus(String context, State state, String description, String targetUrl) {
+        public enum State { PENDING, SUCCESS, FAILURE, ERROR }
+    }
+
+    /**
      * Commit information
      */
     record CommitInfo(

@@ -1,5 +1,6 @@
 package com.codelens.git.github;
 
+import com.codelens.gate.SecurityGateService;
 import com.codelens.model.entity.Repository;
 import com.codelens.service.ReviewService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,17 +16,21 @@ import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 
 class GitHubWebhookControllerTest {
 
     private ReviewService reviewService;
+    private SecurityGateService securityGateService;
     private GitHubWebhookController controller;
 
     @BeforeEach
     void setUp() {
         reviewService = mock(ReviewService.class);
-        controller = new GitHubWebhookController(reviewService, new ObjectMapper());
+        securityGateService = mock(SecurityGateService.class);
+        controller = new GitHubWebhookController(reviewService, securityGateService, new ObjectMapper());
     }
 
     @Test
@@ -66,6 +71,40 @@ class GitHubWebhookControllerTest {
         assertEquals(HttpStatus.OK, response.getStatusCode());
         verify(reviewService).submitReviewFromWebhook(
                 Repository.GitProvider.GITHUB, "owner", "repo", 1, "http://example.com");
+        // Payload has no head SHA, so there is nothing to put a status on
+        verifyNoInteractions(securityGateService);
+    }
+
+    @Test
+    void pullRequestTriggersSecurityGateOnHeadCommit() throws Exception {
+        handleSigned(PR_WITH_SHAS);
+
+        verify(securityGateService).runForPullRequest(
+                Repository.GitProvider.GITHUB, "owner", "repo", 1, "head111", "base222");
+        verify(reviewService).submitReviewFromWebhook(
+                Repository.GitProvider.GITHUB, "owner", "repo", 1, "http://example.com");
+    }
+
+    @Test
+    void gateDispatchFailureDoesNotDropTheReview() throws Exception {
+        doThrow(new RuntimeException("pool exhausted")).when(securityGateService)
+                .runForPullRequest(any(), any(), any(), anyInt(), any(), any());
+
+        ResponseEntity<String> response = handleSigned(PR_WITH_SHAS);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        verify(reviewService).submitReviewFromWebhook(
+                Repository.GitProvider.GITHUB, "owner", "repo", 1, "http://example.com");
+    }
+
+    private static final String PR_WITH_SHAS = "{\"action\":\"synchronize\",\"pull_request\":{\"number\":1,"
+            + "\"html_url\":\"http://example.com\",\"head\":{\"sha\":\"head111\"},\"base\":{\"sha\":\"base222\"}},"
+            + "\"repository\":{\"name\":\"repo\",\"owner\":{\"login\":\"owner\"}}}";
+
+    private ResponseEntity<String> handleSigned(String payload) throws Exception {
+        String secret = "super-secret";
+        ReflectionTestUtils.setField(controller, "webhookSecret", secret);
+        return controller.handleWebhook("pull_request", "sha256=" + hmacSha256(payload, secret), payload);
     }
 
     private String hmacSha256(String payload, String secret) throws Exception {

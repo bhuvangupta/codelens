@@ -203,6 +203,17 @@ codelens:
       token: ${BITBUCKET_TOKEN:}
       webhook-secret: ${BITBUCKET_WEBHOOK_SECRET:}
 
+  # Security merge gate: commit statuses codelens/deps, codelens/sast, codelens/secrets
+  # on every PR head commit. Needs a GitHub token allowed to write commit statuses.
+  security-gate:
+    enabled: ${SECURITY_GATE_ENABLED:false}
+    # report-only: findings and scanner errors are described but the status is always
+    #              green, so marking the checks "required" cannot block merges yet.
+    # enforce:     fail closed - findings, scanner errors, timeouts and missing
+    #              scanners all produce a failing status.
+    mode: ${SECURITY_GATE_MODE:report-only}
+    timeout-seconds: 300
+
   review:
     max-files: 50
     max-diff-lines: 20000

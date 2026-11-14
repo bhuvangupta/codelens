@@ -362,6 +362,32 @@ public class GitHubService implements GitProvider {
         }
     }
 
+    @Override
+    public void setCommitStatus(String owner, String repo, String commitSha, CommitStatus status) {
+        if (gitHub == null) {
+            throw new IllegalStateException("GitHub client is not initialized (missing GITHUB_TOKEN?)");
+        }
+        try {
+            GHRepository repository = gitHub.getRepository(owner + "/" + repo);
+            GHCommitState state = switch (status.state()) {
+                case PENDING -> GHCommitState.PENDING;
+                case SUCCESS -> GHCommitState.SUCCESS;
+                case FAILURE -> GHCommitState.FAILURE;
+                case ERROR -> GHCommitState.ERROR;
+            };
+            // GitHub rejects descriptions longer than 140 characters
+            String description = status.description();
+            if (description != null && description.length() > 140) {
+                description = description.substring(0, 137) + "...";
+            }
+            repository.createCommitStatus(commitSha, state, status.targetUrl(), description, status.context());
+            log.info("Set status {}={} on {}/{}@{}", status.context(), status.state(), owner, repo, commitSha);
+        } catch (IOException e) {
+            log.error("Failed to set status {} on {}/{}@{}", status.context(), owner, repo, commitSha, e);
+            throw new RuntimeException("Failed to set commit status", e);
+        }
+    }
+
     public boolean isInitialized() {
         return initialized;
     }
