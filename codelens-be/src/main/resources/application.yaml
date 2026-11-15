@@ -203,6 +203,50 @@ codelens:
       token: ${BITBUCKET_TOKEN:}
       webhook-secret: ${BITBUCKET_WEBHOOK_SECRET:}
 
+  # Security merge gate: commit statuses codelens/deps, codelens/sast, codelens/secrets
+  # on every PR head commit. Needs a GitHub token allowed to write commit statuses.
+  security-gate:
+    enabled: ${SECURITY_GATE_ENABLED:false}
+    # report-only: findings and scanner errors are described but the status is always
+    #              green, so marking the checks "required" cannot block merges yet.
+    # enforce:     fail closed - findings, scanner errors, timeouts and missing
+    #              scanners all produce a failing status.
+    mode: ${SECURITY_GATE_MODE:report-only}
+    timeout-seconds: 300
+    bypass:
+      # CodeLens account emails allowed to override the gate for one commit, comma-separated.
+      # Empty = nobody. From a PR: comment "/codelens bypass <reason>" (the account needs its
+      # GitHub username set in CodeLens). From CodeLens: POST /api/security-gate/bypass.
+      users: ${SECURITY_GATE_BYPASS_USERS:}
+    # Repositories are cloned from <clone-base-url>/<owner>/<repo>.git using GITHUB_TOKEN
+    clone-base-url: ${SECURITY_GATE_CLONE_BASE_URL:https://github.com}
+    gitleaks:
+      enabled: true
+      path: ${GITLEAKS_PATH:gitleaks}   # needs gitleaks 8.19+ (the "git" subcommand)
+    trivy:
+      enabled: true
+      path: ${TRIVY_PATH:trivy}
+      # Only vulnerabilities of these severities that the PR introduces fail the check
+      severities: HIGH,CRITICAL
+      # false: Trivy resolves parent POMs and transitive dependencies from Maven Central
+      #        and from any <repositories> the scanned pom.xml declares, so restrict
+      #        outbound network access of this host.
+      # true:  no network access, but versions inherited from a parent POM/BOM (most
+      #        Spring Boot dependencies) are only resolved if they are in the local ~/.m2.
+      offline-scan: ${TRIVY_OFFLINE_SCAN:false}
+      # With offline-scan=false, a pom.xml declaring a <repository> on any other host
+      # fails the check instead of being scanned (it would make this server call that host).
+      allowed-repository-hosts: ${TRIVY_ALLOWED_REPOSITORY_HOSTS:repo.maven.apache.org,repo1.maven.org}
+    semgrep:
+      enabled: true
+      path: ${SEMGREP_PATH:semgrep}     # Opengrep is CLI-compatible: point this at it instead
+      # Rule packs (downloaded from the Semgrep registry at scan time) or paths to local
+      # rule files/directories. The registry rules are licensed for internal use only; if
+      # CodeLens is offered to others as a service, use your own rules with Opengrep.
+      rules: ${SEMGREP_RULES:p/java,p/owasp-top-ten}
+      # Only findings of these severities that the PR introduces fail the check
+      severities: ${SEMGREP_SEVERITIES:ERROR}
+
   review:
     max-files: 50
     max-diff-lines: 20000
@@ -253,11 +297,6 @@ codelens:
     npm-audit:
       enabled: true
       fail-on-severity: high
-
-    owasp:
-      enabled: true
-      fail-on-cvss: 7.0
-      update-on-startup: false
 
   # Code Intelligence - structural graph for enhanced reviews
   intelligence:

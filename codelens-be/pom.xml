@@ -152,11 +152,6 @@
             <artifactId>checkstyle</artifactId>
             <version>10.12.7</version>
         </dependency>
-        <dependency>
-            <groupId>org.owasp</groupId>
-            <artifactId>dependency-check-core</artifactId>
-            <version>9.0.7</version>
-        </dependency>
 
         <!-- JWT for API authentication -->
         <dependency>

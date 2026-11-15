@@ -11,7 +11,7 @@ CodeLens combines multiple LLM providers with static analysis to provide compreh
 
 - **Multi-LLM Support**: Ollama (local), Claude, Gemini, OpenAI, GLM
 - **Static Analysis**: PMD, Checkstyle, SpotBugs (Java), ESLint (JS/TS), Ruff/Bandit (Python), Staticcheck/Gosec (Go), Clippy (Rust)
-- **CVE Detection**: npm audit, pip-audit, OWASP Dependency-Check
+- **CVE Detection**: npm audit, pip-audit, Trivy (Maven and lockfiles, via the security gate)
 - **Git Integration**: GitHub and GitLab webhooks
 - **Real-time Progress**: Live updates during review
 - **Cost Tracking**: Monitor LLM usage and costs
